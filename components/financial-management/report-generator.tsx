@@ -1,0 +1,401 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { Check, Clipboard, RotateCcw } from "lucide-react";
+import { AiAnalysisPanel } from "@/components/ai-analysis";
+import { FileDropzone } from "@/components/file-dropzone";
+import { Notice, type NoticeState } from "@/components/notice";
+import {
+  ExportButtons,
+  PageHeader,
+  ReportFooter,
+  ReportHeader,
+  ReportViewport,
+} from "@/components/report-ui";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SendToLarkButton } from "@/components/send-to-lark-button";
+import { Textarea } from "@/components/ui/textarea";
+import { sendReportToLark } from "@/lib/report-export";
+import {
+  CumulativeVarianceTable,
+  DailyBreakdownTable,
+  DashboardContainer,
+  formatManagementCurrency,
+  PerformanceNarratives,
+  TopMetricsCards,
+  TopProductsSection,
+} from "@/components/financial-management/dashboard-sections";
+import {
+  parseFinancialManagementFile,
+  processNormalizedManagementRows,
+} from "@/lib/financial-management";
+import type {
+  CalculatedChannelMetrics,
+  ChannelMetricsSet,
+  ManagementChannel,
+  ManagementTrack,
+  NormalizedManagementRow,
+  ProcessedManagementReport,
+  RawChannelMetrics,
+} from "@/types/financial-management";
+
+function sampleMetrics(
+  revenue: number,
+  costs: {
+    cogs: number;
+    returns: number;
+    salary: number;
+    salaryOther: number;
+    fixed: number;
+    other: number;
+    ads?: number;
+  },
+  productSeed: string,
+): RawChannelMetrics {
+  return {
+    revenue,
+    cogs: costs.cogs,
+    returnProvision: costs.returns,
+    salarySaleCskh: costs.salary,
+    salaryOther: costs.salaryOther,
+    fixedCost: costs.fixed,
+    otherCost: costs.other,
+    adsCost: costs.ads ?? 0,
+    topRevenueProducts: [
+      { name: `${productSeed} Premium`, value: revenue * 0.42 },
+      { name: `${productSeed} Classic`, value: revenue * 0.31 },
+      { name: `${productSeed} Basic`, value: revenue * 0.17 },
+    ],
+    topProfitProducts: [
+      { name: `${productSeed} Premium`, value: revenue * 0.13 },
+      { name: `${productSeed} Classic`, value: revenue * 0.08 },
+      { name: `${productSeed} Basic`, value: revenue * 0.04 },
+    ],
+  };
+}
+
+function sampleRow(
+  date: string,
+  label: string,
+  track: ManagementTrack,
+  channel: ManagementChannel,
+  metrics: RawChannelMetrics,
+): NormalizedManagementRow {
+  return { date, dateLabel: label, track, channel, metrics };
+}
+
+const SAMPLE_ROWS: NormalizedManagementRow[] = [
+  sampleRow("2026-11-01", "01/11/2026", "estimated", "zalo", sampleMetrics(165_000_000, { cogs: 72_000_000, returns: 13_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_000_000 }, "Serum")),
+  sampleRow("2026-11-01", "01/11/2026", "estimated", "page", sampleMetrics(215_000_000, { cogs: 98_000_000, returns: 18_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Kem dưỡng")),
+  sampleRow("2026-11-01", "01/11/2026", "actual", "zalo", sampleMetrics(158_000_000, { cogs: 74_000_000, returns: 15_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_500_000 }, "Serum")),
+  sampleRow("2026-11-01", "01/11/2026", "actual", "page", sampleMetrics(228_000_000, { cogs: 99_000_000, returns: 17_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Kem dưỡng")),
+  sampleRow("2026-11-02", "02/11/2026", "estimated", "zalo", sampleMetrics(172_000_000, { cogs: 76_000_000, returns: 14_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_000_000 }, "Toner")),
+  sampleRow("2026-11-02", "02/11/2026", "estimated", "page", sampleMetrics(224_000_000, { cogs: 102_000_000, returns: 18_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Sữa rửa mặt")),
+  sampleRow("2026-11-02", "02/11/2026", "actual", "zalo", sampleMetrics(168_000_000, { cogs: 79_000_000, returns: 16_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_000_000 }, "Toner")),
+  sampleRow("2026-11-02", "02/11/2026", "actual", "page", sampleMetrics(239_000_000, { cogs: 104_000_000, returns: 17_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Sữa rửa mặt")),
+  sampleRow("2026-11-03", "03/11/2026", "estimated", "zalo", sampleMetrics(180_000_000, { cogs: 78_000_000, returns: 14_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_000_000 }, "Mặt nạ")),
+  sampleRow("2026-11-03", "03/11/2026", "estimated", "page", sampleMetrics(232_000_000, { cogs: 105_000_000, returns: 19_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Combo dưỡng")),
+  sampleRow("2026-11-03", "03/11/2026", "actual", "zalo", sampleMetrics(171_000_000, { cogs: 82_000_000, returns: 17_000_000, salary: 15_000_000, salaryOther: 6_000_000, fixed: 8_000_000, other: 3_000_000 }, "Mặt nạ")),
+  sampleRow("2026-11-03", "03/11/2026", "actual", "page", sampleMetrics(246_000_000, { cogs: 106_000_000, returns: 18_000_000, salary: 18_000_000, salaryOther: 8_000_000, fixed: 11_000_000, other: 4_000_000 }, "Combo dưỡng")),
+];
+
+const SAMPLE_REPORT = processNormalizedManagementRows(SAMPLE_ROWS, "Dữ liệu mẫu");
+
+function hiddenStatusLabel(report: ProcessedManagementReport) {
+  return report.summary.hiddenStatus === "profit"
+    ? "Lãi ngầm"
+    : report.summary.hiddenStatus === "loss"
+      ? "Lỗ ngầm"
+      : "Cân bằng";
+}
+
+function generateCaption(report: ProcessedManagementReport) {
+  const actual = report.summary.actual;
+  return `📊 BÁO CÁO TÀI CHÍNH KỲ ${report.summary.dateRangeLabel}
+💰 Doanh thu: ${formatManagementCurrency(actual.total.revenue)}
+📉 Lợi nhuận: ${formatManagementCurrency(actual.total.profit)} (Zalo: ${formatManagementCurrency(actual.zalo.profit)}, Page: ${formatManagementCurrency(actual.page.profit)})
+🔥 Trạng thái lũy kế: ${hiddenStatusLabel(report)} ${formatManagementCurrency(report.summary.profitDifference)}
+Chi tiết xem ảnh đính kèm!`;
+}
+
+function channelSnapshot(metrics: CalculatedChannelMetrics) {
+  return {
+    doanhThu: metrics.revenue,
+    tongGiaVon: metrics.totalCogs,
+    tongLuong: metrics.totalSalary,
+    chiPhiMarketing: metrics.adsCost,
+    tongDinhPhi: metrics.totalFixedCosts,
+    loiNhuan: metrics.profit,
+  };
+}
+
+function metricsSetSnapshot(set: ChannelMetricsSet) {
+  return { zalo: channelSnapshot(set.zalo), page: channelSnapshot(set.page), tong: channelSnapshot(set.total) };
+}
+
+/** Compact, Vietnamese-keyed view of the report for the AI prompt (omits per-day product lists). */
+function buildAnalysisData(report: ProcessedManagementReport) {
+  const { summary } = report;
+  return {
+    kyBaoCao: summary.dateRangeLabel,
+    tongKy: {
+      duTinh: metricsSetSnapshot(summary.estimated),
+      thucTe: metricsSetSnapshot(summary.actual),
+      chenhLechDoanhThu: summary.revenueDifference,
+      chenhLechLoiNhuan: summary.profitDifference,
+      trangThaiLuyKe: hiddenStatusLabel(report),
+    },
+    topSanPhamDoanhThu: summary.topRevenueProducts,
+    topSanPhamLoiNhuan: summary.topProfitProducts,
+    theoNgay: report.days.map((day) => ({
+      ngay: day.dateLabel,
+      duTinh: metricsSetSnapshot(day.estimated),
+      thucTe: metricsSetSnapshot(day.actual),
+      luyKe: {
+        chenhLechDoanhThu: day.cumulative.revenueDifference,
+        chenhLechLoiNhuan: day.cumulative.profitDifference,
+      },
+    })),
+    canhBaoKhiDocFile: report.warnings,
+  };
+}
+
+function safeFilePart(value: string) {
+  return value.replace(/[^a-zA-Z0-9À-ỹ-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function triggerDownload(href: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+function waitForPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+export default function FinancialManagementReportGenerator() {
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [report, setReport] = useState(SAMPLE_REPORT);
+  const [fileName, setFileName] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [notice, setNotice] = useState<NoticeState>({
+    type: "success",
+    message: "Đang hiển thị dữ liệu mẫu để kiểm tra bố cục dashboard.",
+  });
+  const caption = useMemo(() => generateCaption(report), [report]);
+
+  async function handleFile(file: File) {
+    setIsParsing(true);
+    setNotice({ type: "warning", message: "Đang đọc, kiểm tra và tính lũy kế dữ liệu..." });
+    try {
+      const parsed = await parseFinancialManagementFile(file);
+      setReport(parsed);
+      setFileName(file.name);
+      setNotice({
+        type: parsed.warnings.length ? "warning" : "success",
+        message: `Đã đọc ${parsed.days.length} ngày từ sheet “${parsed.sourceSheet}” (${parsed.inputFormat} format).${parsed.warnings.length ? ` ${parsed.warnings.join(" ")}` : ""}`,
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Không thể đọc file dữ liệu.",
+      });
+    } finally {
+      setIsParsing(false);
+    }
+  }
+
+  function resetSample() {
+    setReport(SAMPLE_REPORT);
+    setFileName("");
+    setNotice({ type: "success", message: "Đã khôi phục dữ liệu mẫu." });
+  }
+
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(caption);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = caption;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  async function renderReport() {
+    if (!reportRef.current) throw new Error("Không tìm thấy dashboard.");
+    await waitForPaint();
+    const { toPng } = await import("html-to-image");
+    return toPng(reportRef.current, {
+      backgroundColor: "#ffffff",
+      cacheBust: true,
+      pixelRatio: 2,
+      width: reportRef.current.scrollWidth,
+      height: reportRef.current.scrollHeight,
+      style: { margin: "0", transform: "none" },
+    });
+  }
+
+  async function sendToLark() {
+    try {
+      await sendReportToLark(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`);
+      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." });
+    } catch (error) {
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." });
+    }
+  }
+
+  async function exportImage() {
+    setExporting("image");
+    try {
+      const dataUrl = await renderReport();
+      triggerDownload(
+        dataUrl,
+        `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`,
+      );
+      setNotice({
+        type: "success",
+        message: "Đã tải ảnh PNG. Caption đã được tạo sẵn bên dưới để sao chép.",
+      });
+    } catch {
+      setNotice({ type: "error", message: "Không thể tạo ảnh dashboard. Vui lòng thử lại." });
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function exportPdf() {
+    setExporting("pdf");
+    try {
+      const dataUrl = await renderReport();
+      const [{ jsPDF }, image] = await Promise.all([
+        import("jspdf"),
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const output = new Image();
+          output.onload = () => resolve(output);
+          output.onerror = reject;
+          output.src = dataUrl;
+        }),
+      ]);
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+      const margin = 8;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+      const renderedHeight = (image.height * printableWidth) / image.width;
+      const pages = Math.max(1, Math.ceil(renderedHeight / printableHeight));
+
+      for (let page = 0; page < pages; page += 1) {
+        if (page > 0) pdf.addPage("a3", "landscape");
+        pdf.addImage(
+          dataUrl,
+          "PNG",
+          margin,
+          margin - page * printableHeight,
+          printableWidth,
+          renderedHeight,
+          undefined,
+          "FAST",
+        );
+      }
+      pdf.save(`bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.pdf`);
+      setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 ngang." });
+    } catch {
+      setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  return (
+    <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-8 sm:px-6">
+      <PageHeader
+        title="Báo cáo quản trị tài chính"
+        description="So sánh Dự tính và Thực tế theo kênh Zalo, Page và kiểm toán Lãi/Lỗ ngầm."
+      >
+        <ExportButtons
+          exporting={exporting}
+          onImage={() => void exportImage()}
+          onPdf={() => void exportPdf()}
+          imageLabel="Xuất ảnh + Caption"
+        />
+        <SendToLarkButton reportName="Báo cáo quản trị tài chính" disabled={exporting !== null} onConfirm={sendToLark} />
+      </PageHeader>
+
+      <Card className="print:hidden">
+        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <FileDropzone
+            className="flex-1"
+            fileName={fileName}
+            isParsing={isParsing}
+            hint="Hỗ trợ long format có cột Channel hoặc wide format với Zalo_/Page_"
+            onFile={(file) => void handleFile(file)}
+          />
+          <Button variant="outline" size="lg" onClick={resetSample}>
+            <RotateCcw />
+            Dữ liệu mẫu
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Notice notice={notice} />
+
+      <AiAnalysisPanel reportType="management" getData={() => buildAnalysisData(report)} />
+
+      <ReportViewport>
+        <DashboardContainer reportRef={reportRef}>
+          <ReportHeader
+            eyebrow="Executive Financial Review"
+            title="Báo cáo quản trị tài chính"
+            subtitle="Đối chiếu Dự tính · Thực tế và kiểm toán Lãi/Lỗ ngầm"
+            metaLabel="Kỳ báo cáo"
+            metaValue={report.summary.dateRangeLabel}
+          />
+          <div className="space-y-8 p-10">
+            <TopMetricsCards report={report} />
+            <DailyBreakdownTable report={report} />
+            <PerformanceNarratives report={report} />
+            <TopProductsSection report={report} />
+            <CumulativeVarianceTable report={report} />
+            <ReportFooter
+              left={`Nguồn: ${report.sourceSheet} · ${report.inputFormat} format`}
+              right="Đơn vị tiền tệ: Việt Nam Đồng (VND)"
+            />
+          </div>
+        </DashboardContainer>
+      </ReportViewport>
+
+      <Card className="print:hidden">
+        <CardHeader>
+          <CardTitle>Caption Zalo / Telegram</CardTitle>
+          <CardDescription>Tự động cập nhật theo số liệu hiện tại</CardDescription>
+          <CardAction>
+            <Button size="lg" onClick={() => void copyCaption()}>
+              {copied ? <Check /> : <Clipboard />}
+              {copied ? "Đã sao chép" : "Sao chép caption"}
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <Textarea readOnly value={caption} rows={6} className="resize-none bg-muted/30 leading-6" />
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
