@@ -5,10 +5,11 @@ import { FileDown, RotateCcw } from "lucide-react";
 import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
+import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import { PerformanceReportView } from "@/components/reports/performance-report-view";
 import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-ui";
+import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { buildPerformanceAnalysisData } from "@/lib/analysis-data";
 import {
@@ -142,41 +143,56 @@ export default function ReportGenerator() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-8 sm:px-6">
-      <PageHeader title="Báo cáo hiệu suất" description="Phân tích doanh thu, lợi nhuận và lũy kế theo nhân sự.">
-        <Input
-          value={reportDate}
-          onChange={(event) => setReportDate(event.target.value)}
-          aria-label="Ngày báo cáo"
-          placeholder="dd/mm/yyyy"
-          className="h-9 w-36 font-medium"
-        />
-        <ExportButtons exporting={exporting} onImage={() => void exportImage()} onPdf={() => void exportPdf()} />
-        <SendToLarkButton reportName="Báo cáo hiệu suất" disabled={exporting !== null} onConfirm={sendToLark} />
-      </PageHeader>
-
-      <Card className="print:hidden">
-        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <FileDropzone
-            className="flex-1"
-            fileName={fileName}
-            isParsing={isParsing}
-            hint="Tự động nhận diện sheet daily, sheet lũy kế và các cột bắt buộc"
-            onFile={(file) => void handleFile(file)}
+    <ReportWorkspace
+      header={
+        <PageHeader title="Báo cáo hiệu suất" description="Phân tích doanh thu, lợi nhuận và lũy kế theo nhân sự.">
+          <Input
+            value={reportDate}
+            onChange={(event) => setReportDate(event.target.value)}
+            aria-label="Ngày báo cáo"
+            placeholder="dd/mm/yyyy"
+            className="h-9 w-36 font-medium"
           />
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="lg" onClick={downloadCsvTemplate}>
-              <FileDown />
-              CSV mẫu
-            </Button>
-            <Button variant="outline" size="lg" onClick={resetSample}>
-              <RotateCcw />
-              Dữ liệu mẫu
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          <ExportButtons exporting={exporting} onImage={() => void exportImage()} onPdf={() => void exportPdf()} />
+          <SendToLarkButton reportName="Báo cáo hiệu suất" disabled={exporting !== null} onConfirm={sendToLark} />
+        </PageHeader>
+      }
+      aside={
+        <>
+          <PancakeSyncCard
+            currencies={["VND"]}
+            hint="Tự lấy doanh thu, giá vốn, phí vận chuyển, ads và lũy kế tháng theo từng nhân sự của shop Việt Nam. Lương và định phí từng người nhập ở mục “Chi phí nhân sự”."
+            onSynced={({ performance }) => {
+              if (!performance) return;
+              setDailyRows(performance.dailyRows);
+              setCumulativeRows(performance.cumulativeRows);
+              setReportDate(performance.reportDate);
+              setFileName("");
+            }}
+          />
 
+          <ConfigSection title="Tệp dữ liệu" collapsible defaultOpen={!fileName}>
+            <FileDropzone
+              compact
+              fileName={fileName}
+              isParsing={isParsing}
+              hint="Tự nhận diện sheet daily và lũy kế"
+              onFile={(file) => void handleFile(file)}
+            />
+            <div className="grid grid-cols-2 gap-1.5">
+              <Button variant="outline" size="sm" onClick={downloadCsvTemplate}>
+                <FileDown />
+                CSV mẫu
+              </Button>
+              <Button variant="outline" size="sm" onClick={resetSample}>
+                <RotateCcw />
+                Dữ liệu mẫu
+              </Button>
+            </div>
+          </ConfigSection>
+        </>
+      }
+    >
       <Notice notice={notice} />
 
       <AiAnalysisPanel
@@ -196,6 +212,6 @@ export default function ReportGenerator() {
           exporting={exporting !== null}
         />
       </ReportViewport>
-    </main>
+    </ReportWorkspace>
   );
 }

@@ -338,10 +338,14 @@ function processDailyRow(
   const ads = parseFinanceNumber(row.ads);
   const shippingFees = parseFinanceNumber(row.shippingFees);
   const payroll = parseFinanceNumber(row.payroll);
-  const totalSalesCostPeso = cogs + ads + shippingFees + payroll;
+  const outsourcedServices = parseFinanceNumber(row.outsourcedServices);
+  const otherCost = parseFinanceNumber(row.otherCost);
+  const provision = parseFinanceNumber(row.inventoryProvision);
+  const taxFee = parseFinanceNumber(row.taxFee);
+  const totalSalesCostPeso = cogs + ads + shippingFees + payroll + outsourcedServices + otherCost;
   const actualProfit = hasValue(row.actualProfit)
     ? parseFinanceNumber(row.actualProfit)
-    : actualRevenue - totalSalesCostPeso;
+    : actualRevenue - provision - totalSalesCostPeso - taxFee;
 
   const estimated = createPair(estimatedRevenue, estimatedProfit, exchangeRate);
   const actual = createPair(actualRevenue, actualProfit, exchangeRate);
@@ -367,12 +371,20 @@ function processDailyRow(
       ads: toDualCurrency(ads, exchangeRate),
       shippingFees: toDualCurrency(shippingFees, exchangeRate),
       payroll: toDualCurrency(payroll, exchangeRate),
+      outsourcedServices: toDualCurrency(outsourcedServices, exchangeRate),
+      otherCost: toDualCurrency(otherCost, exchangeRate),
+      provision: toDualCurrency(provision, exchangeRate),
+      taxFee: toDualCurrency(taxFee, exchangeRate),
       totalSalesCost: toDualCurrency(totalSalesCostPeso, exchangeRate),
       netProfit: actual.profit,
       adsRevenueRatio: actualRevenue === 0 ? 0 : (ads / actualRevenue) * 100,
     },
     cashflow: createCashflow(row, exchangeRate),
-    refund: calculateRefundPerformance(refundRate, previousRefundRate),
+    refund: {
+      ...calculateRefundPerformance(refundRate, previousRefundRate),
+      totalOrders: hasValue(row.totalOrders) ? parseFinanceNumber(row.totalOrders) : null,
+      refundedOrders: hasValue(row.refundedOrders) ? parseFinanceNumber(row.refundedOrders) : null,
+    },
     cumulative: addComparison(accumulated, comparison),
   };
 }

@@ -1,3 +1,4 @@
+import { analyzeWithFallback } from "@/lib/ai-run";
 import {
   AI_MODELS,
   buildUserPrompt,
@@ -11,7 +12,7 @@ import {
   type ReportType,
 } from "@/lib/ai-analysis";
 import { getSessionUser } from "@/lib/auth";
-import { KieError, runKie } from "@/lib/kie";
+import { KieError } from "@/lib/kie";
 
 function fail(message: string, status: number) {
   return Response.json({ error: message }, { status });
@@ -38,8 +39,8 @@ export async function POST(request: Request) {
   if (focus.length > MAX_FOCUS_LENGTH) return fail(`Phần yêu cầu bổ sung tối đa ${MAX_FOCUS_LENGTH} ký tự.`, 400);
 
   try {
-    const raw = await runKie(model, SYSTEM_PROMPT, buildUserPrompt(reportType, data, focus));
-    const body: AnalyzeResponse = { model, analysis: parseAnalysis(raw), raw };
+    const used = await analyzeWithFallback(model, SYSTEM_PROMPT, buildUserPrompt(reportType, data, focus));
+    const body: AnalyzeResponse = { model: used.model, analysis: parseAnalysis(used.raw), raw: used.raw, ...(used.fallbackFrom ? { fallbackFrom: used.fallbackFrom } : {}) };
     return Response.json(body);
   } catch (error) {
     if (error instanceof KieError) return fail(error.message, error.status);

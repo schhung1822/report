@@ -5,13 +5,13 @@ import { FileDown, RefreshCcw } from "lucide-react";
 import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
+import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-ui";
+import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { buildDailyAnalysisData } from "@/lib/analysis-data";
 import { DAILY_SAMPLE_DATA, deriveDaily, parseDailyRows, type DailyReportData } from "@/lib/daily-report";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
@@ -122,89 +122,83 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-8 sm:px-6">
-      <PageHeader title="Báo cáo tài chính hàng ngày" description="Tải dữ liệu đối soát, kiểm tra số liệu và xuất báo cáo.">
-        <ExportButtons
-          exporting={exporting}
-          onImage={() => void exportImage()}
-          onPdf={() => void exportPdf()}
-          imageLabel="Tải ảnh (Caption)"
-        />
-        <SendToLarkButton reportName="Báo cáo tài chính hàng ngày" disabled={exporting !== null} onConfirm={sendToLark} />
-      </PageHeader>
+    <ReportWorkspace
+      header={
+        <PageHeader title="Báo cáo tài chính hàng ngày" description="Tải dữ liệu đối soát, kiểm tra số liệu và xuất báo cáo.">
+          <ExportButtons
+            exporting={exporting}
+            onImage={() => void exportImage()}
+            onPdf={() => void exportPdf()}
+            imageLabel="Tải ảnh (Caption)"
+          />
+          <SendToLarkButton reportName="Báo cáo tài chính hàng ngày" disabled={exporting !== null} onConfirm={sendToLark} />
+        </PageHeader>
+      }
+      aside={
+        <>
+          <PancakeSyncCard
+            currencies={["VND"]}
+            hint="Tự lấy doanh số, tiền chuyển khoản, COD phải thu và phí vận chuyển từ shop Việt Nam. Khoản chi NCC vẫn nhập qua file."
+            onSynced={({ daily }) => {
+              if (!daily) return;
+              setReportData(daily);
+              setFileName("");
+            }}
+          />
 
-      <div className="space-y-6">
-        <div className="grid items-start gap-4 print:hidden md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Dữ liệu nguồn</CardTitle>
-              <CardDescription>Hỗ trợ file .xlsx, .xls và .csv</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <FileDropzone
-                fileName={fileName}
-                isParsing={isParsing}
-                hint="hoặc bấm để chọn file"
-                onFile={(file) => void parseFile(file)}
+          <ConfigSection title="Tệp dữ liệu" collapsible defaultOpen={!fileName}>
+            <FileDropzone
+              compact
+              fileName={fileName}
+              isParsing={isParsing}
+              hint="Kéo thả hoặc bấm chọn (.xlsx, .xls, .csv)"
+              onFile={(file) => void parseFile(file)}
+            />
+            <Button variant="outline" size="sm" className="w-full" onClick={downloadTemplate}>
+              <FileDown />
+              Tải file CSV mẫu
+            </Button>
+          </ConfigSection>
+
+          <ConfigSection title="Thiết lập báo cáo">
+            <div className="space-y-1">
+              <Label htmlFor="company-name" className="text-[11px] text-muted-foreground">
+                Tên đơn vị
+              </Label>
+              <Input id="company-name" className="h-8 text-xs" value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="report-date" className="text-[11px] text-muted-foreground">
+                Ngày báo cáo
+              </Label>
+              <Input
+                id="report-date"
+                className="h-8 text-xs"
+                value={reportData.reportDate}
+                onChange={(event) => setReportData((current) => ({ ...current, reportDate: event.target.value }))}
+                placeholder="dd/mm/yyyy"
               />
-              <Button variant="outline" size="lg" className="w-full" onClick={downloadTemplate}>
-                <FileDown />
-                Tải file CSV mẫu
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-muted-foreground">
+                {expenseGroups.length} nhóm người chi · {reportData.expenses.length} khoản chi NCC
+              </p>
+              <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={resetToSample}>
+                <RefreshCcw />
+                Dữ liệu mẫu
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </ConfigSection>
+        </>
+      }
+    >
+      <Notice notice={notice} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Thiết lập báo cáo</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
-                <div className="space-y-2">
-                  <Label htmlFor="company-name">Tên đơn vị</Label>
-                  <Input id="company-name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-date">Ngày báo cáo</Label>
-                  <Input
-                    id="report-date"
-                    value={reportData.reportDate}
-                    onChange={(event) => setReportData((current) => ({ ...current, reportDate: event.target.value }))}
-                    placeholder="dd/mm/yyyy"
-                  />
-                </div>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between gap-4">
-                <dl className="flex gap-8 text-sm">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Nhóm người chi</dt>
-                    <dd className="mt-1 text-lg font-semibold tabular-nums">{expenseGroups.length}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Khoản chi NCC</dt>
-                    <dd className="mt-1 text-lg font-semibold tabular-nums">{reportData.expenses.length}</dd>
-                  </div>
-                </dl>
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={resetToSample}>
-                  <RefreshCcw />
-                  Khôi phục dữ liệu mẫu
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(reportData, companyName)} />
 
-        <section className="min-w-0 space-y-4">
-          <Notice notice={notice} />
-
-          <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(reportData, companyName)} />
-
-          <ReportViewport>
-            <DailyReportView reportRef={reportRef} data={reportData} companyName={companyName} />
-          </ReportViewport>
-        </section>
-      </div>
-    </main>
+      <ReportViewport>
+        <DailyReportView reportRef={reportRef} data={reportData} companyName={companyName} />
+      </ReportViewport>
+    </ReportWorkspace>
   );
 }

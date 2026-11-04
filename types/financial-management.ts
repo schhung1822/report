@@ -1,4 +1,7 @@
 export type ManagementChannel = "zalo" | "page";
+
+/** `sourceSheet` of a management report built from Pancake POS (the shop as a whole, Zalo and Page together). */
+export const POS_SOURCE_SHEET = "Pancake POS";
 export type ManagementTrack = "estimated" | "actual";
 export type HiddenStatus = "profit" | "loss" | "balanced";
 

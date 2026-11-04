@@ -1,11 +1,16 @@
 // Shared between the client panel and the /api/analyze route. No secrets here.
 
+// GPT comes first: it is the default choice in the panel.
 export const AI_MODELS = [
-  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
   { id: "gpt-5-2", label: "GPT-5.2" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
 ] as const;
 
 export type AiModelId = (typeof AI_MODELS)[number]["id"];
+
+/** Used by default. When it is temporarily unavailable the analysis falls back to FALLBACK_AI_MODEL. */
+export const PREFERRED_AI_MODEL: AiModelId = "gpt-5-2";
+export const FALLBACK_AI_MODEL: AiModelId = "claude-opus-4-7";
 
 export const REPORT_TYPES = {
   daily: {
@@ -51,7 +56,10 @@ export type AnalysisResult = {
 };
 
 export type AnalyzeResponse = {
+  /** The model that actually produced the analysis. */
   model: AiModelId;
+  /** Set when `model` is a fallback because the preferred model could not answer. */
+  fallbackFrom?: AiModelId;
   analysis: AnalysisResult | null;
   /** Raw model output, shown when it could not be parsed as the expected JSON. */
   raw: string;

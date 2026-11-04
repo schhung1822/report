@@ -1,4 +1,5 @@
 import { normalizeText } from "@/lib/workbook";
+import { parseFinanceNumber } from "@/utils/finance";
 
 export type Expense = { payer: string; supplier: string; amount: number };
 export type DailyReportData = {
@@ -8,6 +9,8 @@ export type DailyReportData = {
   codReceivable: number;
   shippingFee: number;
   expenses: Expense[];
+  /** Per day of the range (POS only): sales and the shipping fee, for the daily chart. */
+  series?: { date: string; moneyIn: number; moneyOut: number }[];
 };
 export type ExpenseGroup = { payer: string; items: Expense[]; total: number };
 
@@ -58,12 +61,9 @@ function findColumn(headers: string[], aliases: readonly string[]) {
   return undefined;
 }
 
+/** Same reader as the finance reports: handles "1.250.000", "1,250,000.50", "1.5" and "(500)". */
 function parseMoney(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const text = String(value ?? "").trim();
-  if (!text) return 0;
-  const amount = Number(text.replace(/[^0-9]/g, "") || 0);
-  return text.includes("-") || /^\(.*\)$/.test(text) ? -amount : amount;
+  return parseFinanceNumber(value);
 }
 
 function parseReportDate(value: unknown) {

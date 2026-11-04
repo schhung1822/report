@@ -5,6 +5,58 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* chart kit colours (see chart/ and components/ui/chart-*.tsx) */
+  --color-primary-blue-50: var(--primary-blue-50);
+  --color-primary-blue-100: var(--primary-blue-100);
+  --color-primary-blue-200: var(--primary-blue-200);
+  --color-primary-blue-300: var(--primary-blue-300);
+  --color-primary-blue-400: var(--primary-blue-400);
+  --color-primary-blue-500: var(--primary-blue-500);
+  --color-primary-blue-600: var(--primary-blue-600);
+  --color-primary-green-50: var(--primary-green-50);
+  --color-primary-green-100: var(--primary-green-100);
+  --color-primary-green-200: var(--primary-green-200);
+  --color-primary-green-300: var(--primary-green-300);
+  --color-primary-green-400: var(--primary-green-400);
+  --color-primary-green-500: var(--primary-green-500);
+  --color-primary-green-600: var(--primary-green-600);
+  --color-primary-purple-50: var(--primary-purple-50);
+  --color-primary-purple-100: var(--primary-purple-100);
+  --color-primary-purple-200: var(--primary-purple-200);
+  --color-primary-purple-300: var(--primary-purple-300);
+  --color-primary-purple-400: var(--primary-purple-400);
+  --color-primary-purple-500: var(--primary-purple-500);
+  --color-primary-purple-600: var(--primary-purple-600);
+  --color-primary-orange-50: var(--primary-orange-50);
+  --color-primary-orange-100: var(--primary-orange-100);
+  --color-primary-orange-200: var(--primary-orange-200);
+  --color-primary-orange-300: var(--primary-orange-300);
+  --color-primary-orange-400: var(--primary-orange-400);
+  --color-primary-orange-500: var(--primary-orange-500);
+  --color-primary-orange-600: var(--primary-orange-600);
+  --color-primary-yellow-50: var(--primary-yellow-50);
+  --color-primary-yellow-100: var(--primary-yellow-100);
+  --color-primary-yellow-200: var(--primary-yellow-200);
+  --color-primary-yellow-300: var(--primary-yellow-300);
+  --color-primary-yellow-400: var(--primary-yellow-400);
+  --color-primary-yellow-500: var(--primary-yellow-500);
+  --color-primary-yellow-600: var(--primary-yellow-600);
+  --color-error-500: var(--error-500);
+  --color-surface-white: var(--surface-white);
+  --color-surface-base: var(--surface-base);
+  --color-surface-soft: var(--surface-soft);
+  --color-surface-subdued: var(--surface-subdued);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-disable: var(--surface-disable);
+  --color-surface-loud: var(--surface-loud);
+  --color-fg-loud: var(--fg-loud);
+  --color-fg-normal: var(--fg-normal);
+  --color-fg-soft: var(--fg-soft);
+  --color-fg-white: var(--fg-white);
+  --color-icon-normal: var(--icon-normal);
+  --color-icon-soft: var(--icon-soft);
+  --color-border-soft: var(--border-soft);
+  --color-border-sub: var(--border-sub);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
@@ -49,6 +101,59 @@
 }
 
 :root {
+  /* chart kit palette */
+  --primary-blue-50: #e8f1fd;
+  --primary-blue-100: #d3e6fb;
+  --primary-blue-200: #a9cff7;
+  --primary-blue-300: #7ab5f3;
+  --primary-blue-400: #3a91f0;
+  --primary-blue-500: #1f7be6;
+  --primary-blue-600: #1a68c8;
+  --primary-green-50: #e6f4ea;
+  --primary-green-100: #d2eddb;
+  --primary-green-200: #aedcba;
+  --primary-green-300: #82c995;
+  --primary-green-400: #4cb46a;
+  --primary-green-500: #32a852;
+  --primary-green-600: #278f43;
+  --primary-purple-50: #f5eefe;
+  --primary-purple-100: #ebdcfd;
+  --primary-purple-200: #dcc0fc;
+  --primary-purple-300: #c99bfb;
+  --primary-purple-400: #b46afa;
+  --primary-purple-500: #a858f8;
+  --primary-purple-600: #8f3fe0;
+  --primary-orange-50: #fff0e6;
+  --primary-orange-100: #fee1cc;
+  --primary-orange-200: #fcc9a3;
+  --primary-orange-300: #f9a975;
+  --primary-orange-400: #f48a46;
+  --primary-orange-500: #f07028;
+  --primary-orange-600: #d95f1c;
+  --primary-yellow-50: #fff8e6;
+  --primary-yellow-100: #feefcc;
+  --primary-yellow-200: #fde3a8;
+  --primary-yellow-300: #fcd681;
+  --primary-yellow-400: #f9c866;
+  --primary-yellow-500: #f4b83f;
+  --primary-yellow-600: #d89a1d;
+  --error-500: #fb3748;
+  --surface-white: #ffffff;
+  --surface-base: #f2f2f2;
+  --surface-soft: #ececec;
+  --surface-subdued: #e3e3e3;
+  --surface-muted: #d0d0d0;
+  --surface-disable: #eeeeee;
+  --surface-loud: #141414;
+  --fg-loud: #171717;
+  --fg-normal: #555555;
+  --fg-soft: #8c8c8c;
+  --fg-white: #ffffff;
+  --icon-normal: #555555;
+  --icon-soft: #a8a8a8;
+  --border-soft: #ebebeb;
+  --border-sub: #d9d9d9;
+  --glass-rim: rgb(255 255 255 / 0.35);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -139,3 +244,18 @@
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* Chart kit text styles: size / weight, line height 1 (the templates pad their own text boxes). */
+@utility typo-heading-01-semibold { font-size: 16px; line-height: 1; font-weight: 600; letter-spacing: -0.01em; }
+@utility typo-heading-03-semibold { font-size: 24px; line-height: 1; font-weight: 600; letter-spacing: -0.02em; }
+@utility typo-heading-04-semibold { font-size: 32px; line-height: 1; font-weight: 600; letter-spacing: -0.02em; }
+@utility typo-label-01-medium { font-size: 16px; line-height: 1; font-weight: 500; }
+@utility typo-label-02-regular { font-size: 14px; line-height: 1; font-weight: 400; }
+@utility typo-label-02-medium { font-size: 14px; line-height: 1; font-weight: 500; }
+@utility typo-label-02-semibold { font-size: 14px; line-height: 1; font-weight: 600; }
+@utility typo-label-03-medium { font-size: 12px; line-height: 1; font-weight: 500; }
+@utility typo-label-03-semibold { font-size: 12px; line-height: 1; font-weight: 600; }
+@utility typo-description-02-medium { font-size: 14px; line-height: 20px; font-weight: 500; }
+@utility typo-description-03-semibold { font-size: 14px; line-height: 22px; font-weight: 600; }
+/* Figma's "hug contents": the box is as wide as its text. */
+@utility hug-w { width: fit-content; }

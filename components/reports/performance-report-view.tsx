@@ -1,6 +1,5 @@
-import type { ReactNode, Ref } from "react";
+import type { Ref } from "react";
 import { AlertCircle, Crown, FileSpreadsheet, Sparkles, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 import {
   cellClass,
   ReportFooter,
@@ -11,9 +10,8 @@ import {
   tableHeaderClass,
   TableFrame,
 } from "@/components/report-ui";
+import { PerformanceCharts } from "@/components/charts/report-chart-blocks";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
@@ -30,11 +28,6 @@ import {
   type DailyPerformanceRow,
 } from "@/lib/performance-report";
 
-const PIE_COLORS = ["#171717", "#737373", "#d4d4d4"];
-const POSITIVE_BAR_COLOR = "#171717";
-const NEGATIVE_BAR_COLOR = "#dc2626";
-const CHART_CONFIG = { value: { label: "Doanh thu" } } satisfies ChartConfig;
-const PROFIT_CHART_CONFIG = { netProfit: { label: "Lợi nhuận ròng" } } satisfies ChartConfig;
 const currencyFormatter = new Intl.NumberFormat("vi-VN", {
   style: "currency",
   currency: "VND",
@@ -44,13 +37,6 @@ const numberFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 
 
 function formatCurrency(value: number) {
   return currencyFormatter.format(value);
-}
-
-function formatCompactCurrency(value: number) {
-  const absolute = Math.abs(value);
-  if (absolute >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} tỷ`;
-  if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(0)} tr`;
-  return numberFormatter.format(value);
 }
 
 export function PerformanceReportView({
@@ -71,8 +57,7 @@ export function PerformanceReportView({
   exporting: boolean;
   reportRef?: Ref<HTMLDivElement>;
 }) {
-  const { overview, revenueDistribution, rankedDailyRows } = summarizePerformance(dailyRows);
-  const topFive = rankedDailyRows.slice(0, 5);
+  const { overview, rankedDailyRows } = summarizePerformance(dailyRows);
   const topAgentName = rankedDailyRows[0]?.name;
   const rankedCumulativeRows = [...cumulativeRows].sort((a, b) => b.receivedProfit - a.receivedProfit);
 
@@ -106,70 +91,7 @@ export function PerformanceReportView({
           </div>
         </ReportSection>
 
-        <section className="grid grid-cols-2 gap-5">
-          <ChartCard title="Cơ cấu doanh thu" subtitle="Tỷ trọng CSKH, PAGE và nhóm khác">
-            <div className="grid grid-cols-[1fr_170px] items-center gap-2">
-              <ChartContainer
-                config={CHART_CONFIG}
-                className="aspect-auto h-72 w-full"
-                initialDimension={{ width: 300, height: 288 }}
-              >
-                <PieChart>
-                  <ChartTooltip content={<ChartTooltipContent hideLabel formatter={currencyTooltipFormatter} />} />
-                  <Pie
-                    data={revenueDistribution}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={68}
-                    outerRadius={104}
-                    paddingAngle={2}
-                    stroke="#ffffff"
-                    strokeWidth={3}
-                    isAnimationActive={false}
-                  >
-                    {revenueDistribution.map((item, index) => (
-                      <Cell key={item.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ChartContainer>
-              <ul className="space-y-4">
-                {revenueDistribution.map((item, index) => (
-                  <li key={item.name}>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="size-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
-                      {item.name}
-                    </div>
-                    <p className="mt-1 text-sm font-semibold tabular-nums">{formatCompactCurrency(item.value)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {overview.revenue ? ((item.value / overview.revenue) * 100).toFixed(1) : "0.0"}% tổng doanh thu
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </ChartCard>
-
-          <ChartCard title="Top 5 lợi nhuận ròng" subtitle="Xếp hạng theo kết quả sau hoàn dự tính">
-            <ChartContainer
-              config={PROFIT_CHART_CONFIG}
-              className="aspect-auto h-72 w-full"
-              initialDimension={{ width: 480, height: 288 }}
-            >
-              <BarChart data={topFive} layout="vertical" margin={{ top: 4, right: 22, bottom: 4, left: 8 }}>
-                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={formatCompactCurrency} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel formatter={currencyTooltipFormatter} />} />
-                <Bar dataKey="netProfit" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={false}>
-                  {topFive.map((item) => (
-                    <Cell key={item.name} fill={item.netProfit >= 0 ? POSITIVE_BAR_COLOR : NEGATIVE_BAR_COLOR} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </ChartCard>
-        </section>
+        <PerformanceCharts dailyRows={dailyRows} />
 
         <ReportSection
           index="02"
@@ -297,18 +219,6 @@ export function PerformanceReportView({
   );
 }
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return (
-    <Card size="sm" className="shadow-none">
-      <CardHeader>
-        <CardTitle className="text-sm">{title}</CardTitle>
-        <CardDescription className="text-xs">{subtitle}</CardDescription>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  );
-}
-
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) {
     return (
@@ -338,11 +248,3 @@ function MoneyCell({ value, colored = false, strong = false }: { value: number; 
   );
 }
 
-function currencyTooltipFormatter(value: unknown, name: unknown, item: { payload?: { name?: string } }) {
-  return (
-    <div className="flex w-full items-center justify-between gap-4">
-      <span className="text-muted-foreground">{item.payload?.name ?? String(name)}</span>
-      <span className="font-medium tabular-nums">{formatCurrency(Number(value ?? 0))}</span>
-    </div>
-  );
-}

@@ -16,10 +16,13 @@ export function normalizeText(value: unknown) {
     .trim();
 }
 
-/** Reads every sheet of an .xlsx/.xls/.csv buffer (empty sheets included). */
-export async function readWorkbookSheets(data: ArrayBuffer): Promise<SheetData[]> {
+/**
+ * Reads every sheet of an .xlsx/.xls/.csv buffer (empty sheets included).
+ * `rawText` keeps CSV cells as text; without it SheetJS reads "03/11/2026" as the US date 11 March.
+ */
+export async function readWorkbookSheets(data: ArrayBuffer, { rawText = false }: { rawText?: boolean } = {}): Promise<SheetData[]> {
   const XLSX = await import("xlsx");
-  const workbook = XLSX.read(data, { type: "array", cellDates: false });
+  const workbook = XLSX.read(data, { type: "array", cellDates: false, raw: rawText });
   return workbook.SheetNames.map((name) => {
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[name], {
       defval: "",

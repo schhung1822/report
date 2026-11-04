@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Finance Daily | Báo cáo tài chính nội bộ",
-  description: "Tạo báo cáo tài chính hàng ngày từ dữ liệu Excel hoặc CSV.",
+  title: "NextG | Báo cáo tài chính nội bộ",
+  description: "Tiện ích báo cáo tự động tích hợp đa nền tảng.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signSession, verifySession } from "@/lib/session-token";
+import { cookies, headers } from "next/headers";
+import { isHttpsRequest, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signSession, verifySession } from "@/lib/session-token";
 
 type AuthConfig = { username: string; password: string; secret: string };
 
@@ -34,7 +34,9 @@ export async function createSession(config: AuthConfig) {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Secure only when this very request was https: on plain http the browser would drop the cookie and the sign-in
+    // would bounce back to the login page.
+    secure: isHttpsRequest(await headers()),
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
   });

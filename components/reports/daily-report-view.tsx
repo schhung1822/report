@@ -9,6 +9,7 @@ import {
   TableFrame,
   tableHeaderClass,
 } from "@/components/report-ui";
+import { DailyReportCharts } from "@/components/charts/report-chart-blocks";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -62,6 +63,8 @@ export function DailyReportView({
             </Table>
           </TableFrame>
         </ReportSection>
+
+        <DailyReportCharts data={data} />
 
         <ReportSection index="02" title="Bảng kê chi phí xuất quỹ" description="Các khoản chi được gom nhóm theo người thanh toán">
           <TableFrame>

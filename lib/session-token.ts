@@ -6,6 +6,19 @@ export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 export type SessionPayload = { sub: string; exp: number };
 
+/**
+ * Whether the browser reached us over https. A cookie flagged Secure is thrown away by the browser on a plain-http page,
+ * so the session cookie may only carry the flag when the request really was https. Behind a proxy the original protocol
+ * is in x-forwarded-proto (the first value when several proxies add one); otherwise the Origin of the posted form says.
+ * When neither is known the answer is false: a cookie that works over http beats a Secure one that is silently dropped.
+ */
+export function isHttpsRequest(headers: { get(name: string): string | null }) {
+  const forwarded = headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  if (forwarded) return forwarded === "https";
+  const origin = headers.get("origin")?.trim().toLowerCase();
+  return origin ? origin.startsWith("https:") : false;
+}
+
 const encoder = new TextEncoder();
 
 function toBase64Url(bytes: Uint8Array) {

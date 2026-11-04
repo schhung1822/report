@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Landmark, LayoutDashboard, Menu, Receipt, type LucideIcon } from "lucide-react";
+import { Activity, ArrowRightLeft, BarChart3, Landmark, LayoutDashboard, Megaphone, Menu, Receipt, Wallet, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -20,11 +20,17 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Báo cáo ngày", icon: Receipt },
       { href: "/financial-management", label: "Quản trị tài chính", icon: Landmark },
+      { href: "/fixed-costs", label: "Chi phí cố định", icon: Wallet },
+      { href: "/exchange-rates", label: "Tỷ giá", icon: ArrowRightLeft },
     ],
   },
   {
     label: "Kinh doanh",
-    items: [{ href: "/performance-report", label: "Hiệu suất", icon: BarChart3 }],
+    items: [
+      { href: "/performance-report", label: "Hiệu suất", icon: BarChart3 },
+      { href: "/analytics", label: "Phân tích vận hành", icon: Activity },
+      { href: "/ads", label: "Quảng cáo Meta", icon: Megaphone },
+    ],
   },
 ];
 

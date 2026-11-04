@@ -16,7 +16,7 @@ export function AppHeader() {
             <span className="flex size-7 items-center justify-center rounded-md bg-white text-neutral-950">
               <WalletCards className="size-4" aria-hidden="true" />
             </span>
-            Finance Daily
+            NextG
           </Link>
         </div>
         <Suspense fallback={<div className="h-9 w-40 animate-pulse rounded-lg bg-white/10" />}>

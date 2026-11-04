@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   AI_MODELS,
   MAX_FOCUS_LENGTH,
+  PREFERRED_AI_MODEL,
   type AiModelId,
   type AnalysisResult,
   type AnalyzeResponse,
@@ -38,7 +39,7 @@ type AiAnalysisPanelProps = {
 };
 
 export function AiAnalysisPanel({ reportType, getData, onUseSummary }: AiAnalysisPanelProps) {
-  const [model, setModel] = useState<AiModelId>(AI_MODELS[0].id);
+  const [model, setModel] = useState<AiModelId>(PREFERRED_AI_MODEL);
   const [focus, setFocus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +114,11 @@ export function AiAnalysisPanel({ reportType, getData, onUseSummary }: AiAnalysi
 
         {result ? (
           <div className="space-y-5 border-t pt-5">
+            {result.fallbackFrom ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {AI_MODELS.find((item) => item.id === result.fallbackFrom)?.label} tạm thời không phản hồi nên phân tích này do {modelLabel} thực hiện.
+              </p>
+            ) : null}
             {result.analysis ? (
               <AnalysisView
                 analysis={result.analysis}

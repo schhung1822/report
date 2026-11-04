@@ -11,6 +11,8 @@ type FileDropzoneProps = {
   onFile: (file: File) => void;
   /** "vertical" centers content for narrow sidebars; "horizontal" fits wide toolbars. */
   layout?: "vertical" | "horizontal";
+  /** Smaller padding and icon, for the configuration panel. */
+  compact?: boolean;
   className?: string;
 };
 
@@ -20,6 +22,7 @@ export function FileDropzone({
   hint,
   onFile,
   layout = "horizontal",
+  compact = false,
   className,
 }: FileDropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -50,7 +53,8 @@ export function FileDropzone({
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
       className={cn(
-        "flex cursor-pointer gap-3 rounded-lg border border-dashed p-4 transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50",
+        "flex cursor-pointer rounded-lg border border-dashed transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50",
+        compact ? "gap-2.5 p-2.5" : "gap-3 p-4",
         vertical ? "min-h-40 flex-col items-center justify-center text-center" : "items-center",
         isDragging ? "border-primary bg-muted" : "bg-muted/30 hover:bg-muted/60",
         className,
@@ -59,11 +63,12 @@ export function FileDropzone({
       <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleChange} />
       <span
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground",
+          "flex shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground",
+          compact ? "size-8" : "size-10",
           fileName && !isParsing && "text-emerald-600",
         )}
       >
-        <Icon className={cn("size-5", isParsing && "animate-spin")} aria-hidden="true" />
+        <Icon className={cn(compact ? "size-4" : "size-5", isParsing && "animate-spin")} aria-hidden="true" />
       </span>
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium">

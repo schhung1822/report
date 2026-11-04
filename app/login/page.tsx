@@ -4,7 +4,7 @@ import { LoginForm } from "@/components/login-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Đăng nhập | Finance Daily",
+  title: "Đăng nhập | NextG Report",
 };
 
 export default function LoginPage() {
@@ -15,7 +15,7 @@ export default function LoginPage() {
           <span className="flex size-10 items-center justify-center rounded-lg bg-neutral-950 text-white">
             <WalletCards className="size-5" aria-hidden="true" />
           </span>
-          <p className="text-lg font-semibold tracking-tight">Finance Daily</p>
+          <p className="text-lg font-semibold tracking-tight">NextG Report</p>
         </div>
         <Card>
           <CardHeader>

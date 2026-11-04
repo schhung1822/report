@@ -5,6 +5,7 @@ import { Check, Clipboard, RotateCcw } from "lucide-react";
 import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
+import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import {
   ExportButtons,
   PageHeader,
@@ -12,10 +13,12 @@ import {
   ReportHeader,
   ReportViewport,
 } from "@/components/report-ui";
+import { ManagementCharts } from "@/components/charts/report-chart-blocks";
+import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { Textarea } from "@/components/ui/textarea";
+import { settleChartAnimations } from "@/hooks/use-chart-motion";
 import { sendReportToLark } from "@/lib/report-export";
 import {
   CumulativeVarianceTable,
@@ -239,6 +242,7 @@ export default function FinancialManagementReportGenerator() {
 
   async function renderReport() {
     if (!reportRef.current) throw new Error("Không tìm thấy dashboard.");
+    settleChartAnimations();
     await waitForPaint();
     const { toPng } = await import("html-to-image");
     return toPng(reportRef.current, {
@@ -324,36 +328,60 @@ export default function FinancialManagementReportGenerator() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-8 sm:px-6">
-      <PageHeader
-        title="Báo cáo quản trị tài chính"
-        description="So sánh Dự tính và Thực tế theo kênh Zalo, Page và kiểm toán Lãi/Lỗ ngầm."
-      >
-        <ExportButtons
-          exporting={exporting}
-          onImage={() => void exportImage()}
-          onPdf={() => void exportPdf()}
-          imageLabel="Xuất ảnh + Caption"
-        />
-        <SendToLarkButton reportName="Báo cáo quản trị tài chính" disabled={exporting !== null} onConfirm={sendToLark} />
-      </PageHeader>
-
-      <Card className="print:hidden">
-        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <FileDropzone
-            className="flex-1"
-            fileName={fileName}
-            isParsing={isParsing}
-            hint="Hỗ trợ long format có cột Channel hoặc wide format với Zalo_/Page_"
-            onFile={(file) => void handleFile(file)}
+    <ReportWorkspace
+      header={
+        <PageHeader
+          title="Báo cáo quản trị tài chính"
+          description="So sánh Dự tính và Thực tế theo kênh Zalo, Page và kiểm toán Lãi/Lỗ ngầm."
+        >
+          <ExportButtons
+            exporting={exporting}
+            onImage={() => void exportImage()}
+            onPdf={() => void exportPdf()}
+            imageLabel="Xuất ảnh + Caption"
           />
-          <Button variant="outline" size="lg" onClick={resetSample}>
-            <RotateCcw />
-            Dữ liệu mẫu
-          </Button>
-        </CardContent>
-      </Card>
+          <SendToLarkButton reportName="Báo cáo quản trị tài chính" disabled={exporting !== null} onConfirm={sendToLark} />
+        </PageHeader>
+      }
+      aside={
+        <>
+          <PancakeSyncCard
+            currencies={["VND"]}
+            hint="Tự lấy doanh thu, giá vốn và top sản phẩm theo kênh Zalo / Page (dự tính & thực tế) từ shop Việt Nam. Lương, định phí, ads, dự phòng hoàn theo kênh nhập ở trang Chi phí cố định."
+            onSynced={({ vn }) => {
+              if (!vn) {
+                setNotice({ type: "warning", message: "Pancake POS chưa có dữ liệu để tạo báo cáo quản trị." });
+                return;
+              }
+              setReport(vn);
+              setFileName("");
+            }}
+          />
 
+          <ConfigSection title="Tệp dữ liệu" collapsible defaultOpen={!fileName}>
+            <FileDropzone
+              compact
+              fileName={fileName}
+              isParsing={isParsing}
+              hint="Long format (cột Channel) hoặc wide format (Zalo_/Page_)"
+              onFile={(file) => void handleFile(file)}
+            />
+            <Button variant="outline" size="sm" className="w-full" onClick={resetSample}>
+              <RotateCcw />
+              Dữ liệu mẫu
+            </Button>
+          </ConfigSection>
+
+          <ConfigSection title="Caption Zalo / Telegram" collapsible defaultOpen={false}>
+            <Textarea readOnly value={caption} rows={7} className="resize-none bg-muted/30 text-xs leading-5" />
+            <Button size="sm" className="w-full" onClick={() => void copyCaption()}>
+              {copied ? <Check /> : <Clipboard />}
+              {copied ? "Đã sao chép" : "Sao chép caption"}
+            </Button>
+          </ConfigSection>
+        </>
+      }
+    >
       <Notice notice={notice} />
 
       <AiAnalysisPanel reportType="management" getData={() => buildAnalysisData(report)} />
@@ -369,6 +397,7 @@ export default function FinancialManagementReportGenerator() {
           />
           <div className="space-y-8 p-10">
             <TopMetricsCards report={report} />
+            <ManagementCharts report={report} channel="total" />
             <DailyBreakdownTable report={report} />
             <PerformanceNarratives report={report} />
             <TopProductsSection report={report} />
@@ -380,22 +409,6 @@ export default function FinancialManagementReportGenerator() {
           </div>
         </DashboardContainer>
       </ReportViewport>
-
-      <Card className="print:hidden">
-        <CardHeader>
-          <CardTitle>Caption Zalo / Telegram</CardTitle>
-          <CardDescription>Tự động cập nhật theo số liệu hiện tại</CardDescription>
-          <CardAction>
-            <Button size="lg" onClick={() => void copyCaption()}>
-              {copied ? <Check /> : <Clipboard />}
-              {copied ? "Đã sao chép" : "Sao chép caption"}
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <Textarea readOnly value={caption} rows={6} className="resize-none bg-muted/30 leading-6" />
-        </CardContent>
-      </Card>
-    </main>
+    </ReportWorkspace>
   );
 }

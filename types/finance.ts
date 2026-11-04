@@ -21,6 +21,13 @@ export interface RawDailyFinanceRow {
   shippingFees: RawNumericValue;
   payroll: RawNumericValue;
 
+  /** Outsourced services (fixed costs), other selling costs and the inventory-risk provision; all optional, 0 when omitted. */
+  outsourcedServices?: RawNumericValue;
+  otherCost?: RawNumericValue;
+  inventoryProvision?: RawNumericValue;
+  /** Taxes, fees and charges: a business administration cost, taken off after the selling costs. 0 when omitted. */
+  taxFee?: RawNumericValue;
+
   moneyInTransit?: RawNumericValue;
   unverifiedMoney?: RawNumericValue;
   pos?: RawNumericValue;
@@ -54,6 +61,13 @@ export interface PnLBreakdown {
   ads: DualCurrencyAmount;
   shippingFees: DualCurrencyAmount;
   payroll: DualCurrencyAmount;
+  outsourcedServices: DualCurrencyAmount;
+  otherCost: DualCurrencyAmount;
+  /** Taken off the revenue before the cost of goods ("dự phòng rủi ro hàng tồn"). Not part of totalSalesCost. */
+  provision: DualCurrencyAmount;
+  /** Taxes, fees and charges (administration cost). Not part of totalSalesCost, but taken off the profit. */
+  taxFee: DualCurrencyAmount;
+  /** COGS + ads + shipping + payroll + outsourced services + other. */
   totalSalesCost: DualCurrencyAmount;
   netProfit: DualCurrencyAmount;
   adsRevenueRatio: number;
@@ -76,6 +90,9 @@ export interface RefundPerformance {
   delta: number | null;
   trend: RefundTrend;
   status: RefundStatus;
+  /** The order counts behind the rate, when the source has them (null when only a rate was given). */
+  totalOrders?: number | null;
+  refundedOrders?: number | null;
 }
 
 export interface ProcessedDailyFinance {

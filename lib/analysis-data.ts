@@ -6,7 +6,13 @@ import {
   type DailyPerformanceRow,
 } from "@/lib/performance-report";
 import type { ProcessedMonthlyFinanceReport } from "@/types/finance";
-import type { CalculatedChannelMetrics, HiddenStatus, ProcessedManagementReport } from "@/types/financial-management";
+import {
+  POS_SOURCE_SHEET,
+  type CalculatedChannelMetrics,
+  type ChannelMetricsSet,
+  type HiddenStatus,
+  type ProcessedManagementReport,
+} from "@/types/financial-management";
 
 export function buildDailyAnalysisData(data: DailyReportData, companyName: string) {
   const calculations = deriveDaily(data);
@@ -85,27 +91,33 @@ function channelSnapshot(metrics: CalculatedChannelMetrics) {
   };
 }
 
-/** The Vietnam (CSKH Zalo) management report: only the Zalo channel is described. */
+/** The Vietnam management report: the whole shop when it comes from the POS, the Zalo (CSKH) channel when read from a file. */
 export function buildVnManagementAnalysisData(report: ProcessedManagementReport) {
   const { summary } = report;
+  const wholeShop = report.sourceSheet === POS_SOURCE_SHEET;
+  const pick = (set: ChannelMetricsSet) => (wholeShop ? set.total : set.zalo);
+  const estimated = pick(summary.estimated);
+  const actual = pick(summary.actual);
   return {
     kyBaoCao: summary.dateRangeLabel,
-    kenh: "Nhóm CSKH Zalo (Việt Nam, VND)",
+    kenh: wholeShop ? "Toàn shop, Zalo và Page gộp một (Việt Nam, VND)" : "Nhóm CSKH Zalo (Việt Nam, VND)",
     tongKy: {
-      duTinh: channelSnapshot(summary.estimated.zalo),
-      thucTe: channelSnapshot(summary.actual.zalo),
-      chenhLechDoanhThu: summary.actual.zalo.revenue - summary.estimated.zalo.revenue,
-      chenhLechLoiNhuan: summary.actual.zalo.profit - summary.estimated.zalo.profit,
+      duTinh: channelSnapshot(estimated),
+      thucTe: channelSnapshot(actual),
+      chenhLechDoanhThu: actual.revenue - estimated.revenue,
+      chenhLechLoiNhuan: actual.profit - estimated.profit,
     },
-    topSanPhamDoanhThu: summary.actual.zalo.topRevenueProducts.slice(0, 5),
-    topSanPhamLoiNhuan: summary.actual.zalo.topProfitProducts.slice(0, 5),
+    topSanPhamDoanhThu: actual.topRevenueProducts.slice(0, 5),
+    topSanPhamLoiNhuan: actual.topProfitProducts.slice(0, 5),
     theoNgay: report.days.map((day) => {
-      const revenueDiff = day.actual.zalo.revenue - day.estimated.zalo.revenue;
-      const profitDiff = day.actual.zalo.profit - day.estimated.zalo.profit;
+      const dayEstimated = pick(day.estimated);
+      const dayActual = pick(day.actual);
+      const revenueDiff = dayActual.revenue - dayEstimated.revenue;
+      const profitDiff = dayActual.profit - dayEstimated.profit;
       return {
         ngay: day.dateLabel,
-        duTinh: channelSnapshot(day.estimated.zalo),
-        thucTe: channelSnapshot(day.actual.zalo),
+        duTinh: channelSnapshot(dayEstimated),
+        thucTe: channelSnapshot(dayActual),
         chenhLechDoanhThu: revenueDiff,
         chenhLechLoiNhuan: profitDiff,
         trangThaiLuyKe: HIDDEN_LABEL[day.cumulative.hiddenStatus],
@@ -115,7 +127,7 @@ export function buildVnManagementAnalysisData(report: ProcessedManagementReport)
   };
 }
 
-/** The Philippines report: every money value comes as peso (₱) and its VND equivalent. */
+/** The Philippines report is read in VND; every money value comes as peso (₱) and its VND equivalent. */
 export function buildPhAnalysisData(report: ProcessedMonthlyFinanceReport) {
   const { summary } = report;
   return {
@@ -145,6 +157,12 @@ export function buildPhAnalysisData(report: ProcessedMonthlyFinanceReport) {
       ads: day.pnl.ads,
       phiVanChuyen: day.pnl.shippingFees,
       luong: day.pnl.payroll,
+      dichVuMuaNgoai: day.pnl.outsourcedServices,
+      chiPhiKhac: day.pnl.otherCost,
+      duPhongRuiRoHangTon: day.pnl.provision,
+      tongChiPhiBanHangGomGiaVon: day.pnl.totalSalesCost,
+      soDonHoan: day.refund.refundedOrders,
+      soDonDaXacNhan: day.refund.totalOrders,
       tyLeAdsTrenDoanhThuPhanTram: day.pnl.adsRevenueRatio,
       dongTien: {
         tienDangVe: day.cashflow.moneyInTransit,

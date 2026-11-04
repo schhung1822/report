@@ -5,14 +5,17 @@ import { Check, CircleAlert, FileSpreadsheet, Minus, Sparkles } from "lucide-rea
 import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
+import { PancakeSyncCard } from "@/components/pancake-sync-card";
+import type { PancakeSyncResult } from "@/lib/pancake/types";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { PerformanceReportView } from "@/components/reports/performance-report-view";
 import { PhFinanceView } from "@/components/reports/ph-finance-view";
 import { VnManagementView } from "@/components/reports/vn-management-view";
 import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-ui";
+import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +37,7 @@ import { PH_DEFAULT_EXCHANGE_RATE, processPhilippinesRows } from "@/lib/philippi
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
+import { POS_SOURCE_SHEET } from "@/types/financial-management";
 
 const TAB_KEYS: ReportKey[] = ["daily", "performance", "vn", "ph"];
 
@@ -61,6 +65,8 @@ export function ConsolidatedReport() {
   const [companyName, setCompanyName] = useState("CÔNG TY TNHH THƯƠNG MẠI NỘI BỘ");
   const [phRate, setPhRate] = useState(String(PH_DEFAULT_EXCHANGE_RATE));
   const [summary, setSummary] = useState("");
+  const [shopResults, setShopResults] = useState<Record<number, PancakeSyncResult>>({});
+  const [activeShop, setActiveShop] = useState<Record<string, number>>({});
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
 
   const phRows = data?.phRows ?? null;
@@ -83,12 +89,20 @@ export function ConsolidatedReport() {
     ph: Boolean(data?.phRows),
   };
   const canExport = available[tab] && !(tab === "ph" && !phResult?.report);
+  // The cumulative reconciliation needs the Pancake shop on screen; a report read from an Excel file has none.
+  const reconcileOf = (currency: "VND" | "PHP") => {
+    const result = shopResults[activeShop[currency]];
+    return result ? { shopId: result.shop.id, to: result.range.to } : undefined;
+  };
 
   async function loadBuffer(buffer: ArrayBuffer, label: string) {
     setIsParsing(true);
     setNotice(null);
     try {
       const parsed = await parseConsolidatedWorkbook(buffer);
+      // The file replaces every report, so the Pancake shops fetched before no longer describe what is on screen.
+      setShopResults({});
+      setActiveShop({});
       setData(parsed);
       setFileName(label);
       setSummary("");
@@ -107,6 +121,49 @@ export function ConsolidatedReport() {
     } finally {
       setIsParsing(false);
     }
+  }
+
+  /** Merges one shop's data into the tabs it feeds: VND shops fill daily/performance/vn, PHP shops fill ph. */
+  function syncFromPancake(result: PancakeSyncResult, options: { keepTab?: boolean } = {}) {
+    // Remember every shop's report: with several shops of one currency, the one on screen can be switched.
+    setShopResults((previous) => ({ ...previous, [result.shop.id]: result }));
+    setActiveShop((previous) => ({ ...previous, [result.shop.currency.toUpperCase()]: result.shop.id }));
+    const updates: SheetStatus[] = [];
+    if (result.phRows) {
+      // Show the stored house rate in the default-rate box (days without their own rate use it).
+      if (result.exchangeRate) setPhRate(String(result.exchangeRate.rate));
+      updates.push({ key: "ph", state: "ok", sheetName: "Pancake POS" });
+    }
+    if (result.daily && result.performance) {
+      updates.push({ key: "daily", state: "ok", sheetName: "Pancake POS" }, { key: "performance", state: "ok", sheetName: "Pancake POS" });
+    }
+    if (result.vn) {
+      updates.push({ key: "vn", state: "ok", sheetName: "Pancake POS" });
+    } else if (result.daily) {
+      updates.push({ key: "vn", state: "error", sheetName: "Pancake POS", message: "Pancake POS chưa có đơn nào trong khoảng ngày để tạo báo cáo quản trị." });
+    }
+    const updated = new Set(updates.map((status) => status.key));
+
+    // Functional update: several results can be applied back to back (restoring the Vietnam and the Philippines
+    // report on page load) and each must build on the previous one.
+    setData((previous) => {
+      const base: ConsolidatedData = previous ?? { daily: null, performance: null, vn: null, phRows: null, statuses: [] };
+      const next: ConsolidatedData = { ...base };
+      if (result.phRows) next.phRows = result.phRows;
+      if (result.daily && result.performance) {
+        next.daily = result.daily;
+        next.performance = result.performance;
+      }
+      if (result.vn) next.vn = result.vn;
+      next.statuses = TAB_KEYS.map(
+        (key) => updates.find((status) => status.key === key) ?? base.statuses.find((status) => status.key === key) ?? { key, state: "missing" as const },
+      );
+      return next;
+    });
+    setFileName("Pancake POS");
+    setSummary("");
+    if (!options.keepTab) setTab((current) => TAB_KEYS.find((key) => updated.has(key)) ?? current);
+    setNotice(null);
   }
 
   async function handleFile(file: File) {
@@ -174,72 +231,77 @@ export function ConsolidatedReport() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] flex-1 space-y-6 px-4 py-8 sm:px-6">
-      <PageHeader
-        title="Báo cáo tổng hợp"
-        description="Một file Excel nhiều sheet, xem tất cả báo cáo trong cùng một trang qua các tab."
-      >
-        <Button variant="outline" size="lg" onClick={() => void downloadTemplate()}>
-          <FileSpreadsheet />
-          Tải mẫu Excel
-        </Button>
-        {canExport ? (
-          <>
-            <ExportButtons exporting={exporting} onImage={() => void exportImage()} onPdf={() => void exportPdf()} />
-            <SendToLarkButton reportName={REPORT_LABELS[tab]} disabled={exporting !== null} onConfirm={sendToLark} />
-          </>
-        ) : null}
-      </PageHeader>
+    <ReportWorkspace
+      header={
+        <PageHeader
+          title="Báo cáo tổng hợp"
+          description="Lấy số liệu từ Pancake POS hoặc một file Excel nhiều sheet; xem tất cả báo cáo qua các tab."
+        >
+          {canExport ? (
+            <>
+              <ExportButtons exporting={exporting} onImage={() => void exportImage()} onPdf={() => void exportPdf()} />
+              <SendToLarkButton reportName={REPORT_LABELS[tab]} disabled={exporting !== null} onConfirm={sendToLark} />
+            </>
+          ) : null}
+        </PageHeader>
+      }
+      aside={
+        <>
+          <PancakeSyncCard
+            allowAllShops
+            hint="Chọn “Tất cả shop” để lấy mọi shop một lần, hoặc chọn shop Việt Nam để điền Báo cáo ngày, Hiệu suất và Quản trị TC · Việt; chọn shop Philippines để điền Quản trị TC · Philippines. Mỗi lần lấy chỉ cập nhật các tab của shop đó."
+            onSynced={syncFromPancake}
+          />
 
-      <Card className="print:hidden">
-        <CardHeader>
-          <CardTitle>Dữ liệu nguồn</CardTitle>
-          <CardDescription>
-            Tải file theo mẫu: mỗi sheet là một báo cáo. Sheet nào thiếu thì tab đó để trống.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <ConfigSection title="Tệp Excel tổng hợp" collapsible defaultOpen={!data}>
             <FileDropzone
-              className="flex-1"
+              compact
               fileName={fileName}
               isParsing={isParsing}
               hint="Chọn file .xlsx theo mẫu tổng hợp"
               onFile={(file) => void handleFile(file)}
             />
-            <div className="flex items-end gap-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="company-name" className="text-xs text-muted-foreground">
-                  Tên đơn vị (báo cáo ngày)
-                </Label>
-                <Input
-                  id="company-name"
-                  value={companyName}
-                  onChange={(event) => setCompanyName(event.target.value)}
-                  className="h-9 w-64"
-                />
-              </div>
-              <Button variant="outline" size="lg" className="h-9" onClick={() => void loadSample()}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => void downloadTemplate()}>
+                <FileSpreadsheet />
+                Mẫu Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void loadSample()}>
                 <Sparkles />
                 Dữ liệu mẫu
               </Button>
             </div>
-          </div>
-
-          {data ? <SheetStatusList statuses={data.statuses} /> : null}
-        </CardContent>
-      </Card>
-
+            <div className="space-y-1">
+              <Label htmlFor="company-name" className="text-[11px] text-muted-foreground">
+                Tên đơn vị (báo cáo ngày)
+              </Label>
+              <Input id="company-name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} className="h-8 text-xs" />
+            </div>
+            {data ? <SheetStatusList statuses={data.statuses} /> : null}
+          </ConfigSection>
+        </>
+      }
+    >
       <Notice notice={notice} />
+
+      <ShopSwitcher
+        results={Object.values(shopResults)}
+        active={activeShop}
+        onPick={(result) => syncFromPancake(result, { keepTab: true })}
+      />
 
       {!data ? (
         <EmptyState onTemplate={() => void downloadTemplate()} onSample={() => void loadSample()} />
       ) : (
         <Tabs value={tab} onValueChange={(value) => setTab(value as ReportKey)} className="gap-4">
           <div className="overflow-x-auto print:hidden">
-            <TabsList className="h-10 min-w-max">
+            <TabsList className="h-11 min-w-max gap-1 border p-1 shadow-xs">
               {TAB_KEYS.map((key) => (
-                <TabsTrigger key={key} value={key} className="px-3">
+                <TabsTrigger
+                  key={key}
+                  value={key}
+                  className="px-4 font-semibold text-foreground/70 hover:bg-background hover:text-foreground data-active:bg-primary! data-active:text-primary-foreground! data-active:shadow-md"
+                >
                   <span
                     className={cn("size-1.5 rounded-full", available[key] ? "bg-emerald-500" : "bg-muted-foreground/30")}
                     aria-hidden="true"
@@ -299,7 +361,7 @@ export function ConsolidatedReport() {
               <>
                 <AiAnalysisPanel reportType="management" getData={() => buildVnManagementAnalysisData(data.vn!)} />
                 <ReportViewport>
-                  <VnManagementView reportRef={vnRef} report={data.vn} />
+                  <VnManagementView reportRef={vnRef} report={data.vn} reconcile={data.vn.sourceSheet === POS_SOURCE_SHEET ? reconcileOf("VND") : undefined} />
                 </ReportViewport>
               </>
             ) : (
@@ -338,7 +400,7 @@ export function ConsolidatedReport() {
                   <>
                     <AiAnalysisPanel reportType="philippines" getData={() => buildPhAnalysisData(phResult.report!)} />
                     <ReportViewport>
-                      <PhFinanceView reportRef={phRef} report={phResult.report} />
+                      <PhFinanceView reportRef={phRef} report={phResult.report} reconcile={reconcileOf("PHP")} />
                     </ReportViewport>
                   </>
                 ) : (
@@ -351,7 +413,46 @@ export function ConsolidatedReport() {
           </TabsContent>
         </Tabs>
       )}
-    </main>
+    </ReportWorkspace>
+  );
+}
+
+const CURRENCY_TITLE: Record<string, string> = { VND: "Shop Việt Nam (VND)", PHP: "Shop Philippines (PHP)" };
+
+/**
+ * When "all shops" fetched several shops of the same currency, each report tab shows one of them.
+ * This row lets the user pick which; it is hidden while every currency has a single shop.
+ */
+function ShopSwitcher({
+  results,
+  active,
+  onPick,
+}: {
+  results: PancakeSyncResult[];
+  active: Record<string, number>;
+  onPick: (result: PancakeSyncResult) => void;
+}) {
+  const groups = new Map<string, PancakeSyncResult[]>();
+  for (const result of results) {
+    const currency = result.shop.currency.toUpperCase();
+    groups.set(currency, [...(groups.get(currency) ?? []), result]);
+  }
+  const multi = Array.from(groups).filter(([, list]) => list.length > 1);
+  if (!multi.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/30 px-3 py-2 print:hidden">
+      {multi.map(([currency, list]) => (
+        <div key={currency} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">{CURRENCY_TITLE[currency] ?? currency}:</span>
+          {list.map((result) => (
+            <Button key={result.shop.id} size="xs" variant={active[currency] === result.shop.id ? "default" : "outline"} onClick={() => onPick(result)}>
+              {result.shop.name}
+            </Button>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
