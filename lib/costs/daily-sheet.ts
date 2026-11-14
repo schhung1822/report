@@ -48,6 +48,20 @@ export type SheetColumn = {
   aliases: string[];
   /** One line explaining what to put in the column. */
   hint: string;
+  /** The report has no other source for this figure (the POS holds none), so a day without it is incomplete. */
+  essential?: boolean;
+};
+
+/**
+ * What a shop's report needs typed in before its profit is right: a day counts as covered when any of `lines` has an amount.
+ * Vietnam has none (the POS holds its cost of goods and shipping); the Philippines POS holds no cost of goods (its shipping,
+ * outsourced services, other cost and tax/fee are a per-product rate, see lib/pancake/ph-order-costs.ts).
+ */
+export const SHEET_COVERAGE: Record<SheetMarket, { label: string; lines: SheetLine[] }[]> = {
+  VND: [],
+  PHP: [
+    { label: "Giá vốn", lines: ["cogs"] },
+  ],
 };
 
 export const SHEET_COLUMNS: Record<SheetMarket, SheetColumn[]> = {
@@ -76,7 +90,8 @@ export const SHEET_COLUMNS: Record<SheetMarket, SheetColumn[]> = {
       line: "cogs",
       header: "Giá vốn hàng bán",
       aliases: ["gia von hang ban", "gia von"],
-      hint: "Giá vốn của ngày (POS shop Phil không có giá vốn).",
+      hint: "Giá vốn của ngày (POS shop Phil không có giá vốn). Để trống = tính theo danh mục nếu đã đặt giá vốn trung bình ở tab “Giá vốn theo danh mục”. Có số thì dùng số này.",
+      essential: true,
     },
     {
       line: "return_provision",
@@ -88,31 +103,31 @@ export const SHEET_COLUMNS: Record<SheetMarket, SheetColumn[]> = {
       line: "fixed_cost",
       header: "Chi phí dịch vụ mua ngoài",
       aliases: ["chi phi dich vu mua ngoai", "dich vu mua ngoai"],
-      hint: "Chi phí dịch vụ mua ngoài của ngày.",
+      hint: "Để trống = đơn giá theo sản phẩm × số sản phẩm bán ra của ngày (đặt ở tab “Đơn giá theo sản phẩm”). Có số thì dùng số này cho ngày đó.",
     },
     {
       line: "shipping_ped_ph",
       header: "Giao hàng từ PED đến Phi",
       aliases: ["chi phi giao hang tu ped den phi", "giao hang tu ped den phi", "ped den phi"],
-      hint: "Có số thì thay cho phí vận chuyển POS (cộng với cột bên cạnh).",
+      hint: "Để trống = đơn giá theo sản phẩm × số sản phẩm bán ra của ngày. Có số thì dùng số này cho ngày đó (cộng với cột bên cạnh).",
     },
     {
       line: "shipping_ph",
       header: "Giao hàng bên Phi",
       aliases: ["chi phi giao hang ben phi", "giao hang ben phi", "ben phi"],
-      hint: "Phí giao hàng trong nước Phi.",
+      hint: "Để trống = đơn giá theo sản phẩm × số sản phẩm bán ra của ngày. Có số thì dùng số này cho ngày đó.",
     },
     {
       line: "other_cost",
       header: "Chi phí khác",
       aliases: ["chi phi khac"],
-      hint: "Chi phí bán hàng khác.",
+      hint: "Để trống = đơn giá theo sản phẩm × số sản phẩm bán ra của ngày. Có số thì dùng số này cho ngày đó.",
     },
     {
       line: "tax_fee",
       header: "Thuế, phí và lệ phí",
       aliases: ["thue phi va le phi", "thue phi le phi", "thue phi", "thue"],
-      hint: "Chi phí quản lý doanh nghiệp, trừ riêng sau chi phí bán hàng.",
+      hint: "Chi phí quản lý doanh nghiệp, trừ riêng sau chi phí bán hàng. Để trống = đơn giá theo sản phẩm × số sản phẩm bán ra của ngày.",
     },
   ],
 };
@@ -136,6 +151,16 @@ export const MAX_SHEET_CELLS = 8_000;
 
 const cellKey = (cell: Pick<SheetCell, "date" | "channel" | "line">) => `${cell.date}|${cell.channel}|${cell.line}`;
 const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** Digits with thousands / decimal separators only, as typed into a cost cell: no letters, no minus sign. */
+export function isAmountText(text: string) {
+  return /^[\d.,\s]*\d[\d.,\s]*$/.test(text);
+}
+
+/** The amount of a typed cost cell (call `isAmountText` first), to the cent. */
+export function parseAmountText(text: string) {
+  return round2(parseFinanceNumber(text));
+}
 
 export function sheetMarketOf(currency: string | undefined): SheetMarket {
   return currency?.toUpperCase() === "PHP" ? "PHP" : "VND";

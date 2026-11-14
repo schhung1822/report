@@ -3,6 +3,7 @@ import { CostDbError, isMysqlConfigured } from "@/lib/costs/db";
 import { deleteDailyCosts, listDailyCosts, saveDailyCosts } from "@/lib/costs/daily-repository";
 import { MAX_SHEET_DAYS, validateSheetCells, type SheetMarket } from "@/lib/costs/daily-sheet";
 import { addDays, isValidIsoDate } from "@/lib/pancake/dates";
+import { invalidatePnlDays } from "@/lib/pnl/repository";
 
 function fail(message: string, status: number) {
   return Response.json({ error: message }, { status });
@@ -54,7 +55,11 @@ export async function POST(request: Request) {
   if (!parsed.ok) return fail(parsed.error, 400);
 
   try {
-    return Response.json({ saved: await saveDailyCosts(shopId, parsed.cells, user) });
+    const saved = await saveDailyCosts(shopId, parsed.cells, user);
+    // The kept profit-sheet figures of these days were worked out with the old costs.
+    const dates = parsed.cells.map((cell) => cell.date).sort();
+    if (dates.length) await invalidatePnlDays(shopId, dates[0], dates[dates.length - 1]);
+    return Response.json({ saved });
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);
     return fail("Không thể lưu bảng chi phí theo ngày.", 500);
@@ -67,7 +72,9 @@ export async function DELETE(request: Request) {
   if (!range.ok) return fail(range.error, 400);
 
   try {
-    return Response.json({ deleted: await deleteDailyCosts(range.shopId, range.from, range.to) });
+    const deleted = await deleteDailyCosts(range.shopId, range.from, range.to);
+    await invalidatePnlDays(range.shopId, range.from, range.to);
+    return Response.json({ deleted });
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);
     return fail("Không thể xoá bảng chi phí theo ngày.", 500);

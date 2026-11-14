@@ -18,7 +18,15 @@ import {
   parsePerformanceFile,
 } from "@/lib/performance-report";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
-import { renderReportToPng, safeFilePart, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export";
+import {
+  larkSentMessage,
+  renderReportToPng,
+  safeFilePart,
+  saveReportAsPdf,
+  sendReportToLark,
+  triggerDownload,
+  type LarkFormat,
+} from "@/lib/report-export";
 
 const SAMPLE_DAILY_ROWS = [
   calculateDailyRow({ name: "DIỆU LINH CSKH", revenue: 68_500_000, cogs: 31_200_000, shipping: 4_100_000, salary: 5_500_000, fixedCost: 2_100_000, ads: 7_800_000 }),
@@ -129,14 +137,14 @@ export default function ReportGenerator() {
     }
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     // Same as exporting: swap the editable summary for static text so it appears in the image.
-    setExporting("image");
+    setExporting(format === "pdf" ? "pdf" : "image");
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.png`);
-      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." });
+      await sendReportToLark(reportRef.current, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.png`, { format, pdf: { margin: 7 } });
+      setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." });
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
     } finally {
       setExporting(null);
     }

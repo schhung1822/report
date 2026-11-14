@@ -1,5 +1,5 @@
 import type { DailyReportData } from "@/lib/daily-report";
-import type { CumulativePerformanceRow, DailyPerformanceRow } from "@/lib/performance-report";
+import type { CumulativePerformanceRow, DailyPerformanceRow, SharedPerformanceCosts } from "@/lib/performance-report";
 import type { RawDailyFinanceRow } from "@/types/finance";
 import type { PosDataset } from "./dataset";
 import type { ProcessedManagementReport } from "@/types/financial-management";
@@ -92,6 +92,25 @@ export type MetaAdsSummary = {
 /** Longest range one request may cover. */
 export const MAX_RANGE_DAYS = 93;
 
+/** The day before a report's last day, for the "today vs yesterday" comparison when the range does not contain it. */
+export type PreviousDay = {
+  date: string;
+  /** Actual revenue (confirmed minus returned) in the shop's currency. */
+  revenue: number;
+  /** Confirmed orders and how many of them were returned. */
+  orders: number;
+  refunded: number;
+};
+
+/** Re-exported for the report views: month-to-date refund figures (see refund.ts). */
+export type { RefundPoint, RefundTrend } from "./refund";
+
+/** One status of the orders that are still open: how many there are and the COD they are still to bring in. */
+export type OpenOrderLine = { status: string; label: string; orders: number; cod: number };
+
+/** Philippines: the COD of the orders still open (confirmed, waiting to be handed over, shipped) when the data was read. */
+export type OpenOrders = { asOf: string; lines: OpenOrderLine[]; orders: number; cod: number };
+
 /** VND shops fill `daily`, `performance` and `vn`; PHP shops fill `phRows`. `dataset` is the normalized source of all of them. */
 export type PancakeSyncResult = {
   shop: PancakeShop;
@@ -102,12 +121,18 @@ export type PancakeSyncResult = {
   warnings: string[];
   dataset: PosDataset;
   daily?: DailyReportData;
-  performance?: { dailyRows: DailyPerformanceRow[]; cumulativeRows: CumulativePerformanceRow[]; reportDate: string };
+  performance?: { dailyRows: DailyPerformanceRow[]; cumulativeRows: CumulativePerformanceRow[]; reportDate: string; sharedCosts?: SharedPerformanceCosts };
   vn?: ProcessedManagementReport;
   /** Daily rows of the range in the shop currency (peso for the Philippines finance report). */
   phRows?: RawDailyFinanceRow[];
   /** Ad spend from the Meta accounts labelled for this shop, when there are any. */
   metaAds?: MetaAdsSummary;
+  /** Philippines: the day before `range.to` (the comparison of the last day with the one before it). */
+  previousDay?: PreviousDay;
+  /** Philippines: the money in circulation, by order status, when the data was read (not per day). */
+  openOrders?: OpenOrders;
+  /** Philippines: month-to-date refund figures per day, for the refund rate (returned revenue / successful revenue). */
+  refundTrend?: import("./refund").RefundTrend;
   /** The house rate applied to the Philippines report (null when none was in effect). */
   exchangeRate?: { rate: number; effectiveDate: string } | null;
   /** Set when this result is stored in (or was restored from) the report history. */

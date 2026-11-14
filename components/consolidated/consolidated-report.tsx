@@ -7,6 +7,7 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
 import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import type { PancakeSyncResult } from "@/lib/pancake/types";
+import { mergeablePhResults, mergeOpenOrders, mergePhRows, mergePreviousDay, mergeRefundTrend } from "@/lib/pancake/merge-ph";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { PerformanceReportView } from "@/components/reports/performance-report-view";
 import { PhFinanceView } from "@/components/reports/ph-finance-view";
@@ -35,7 +36,7 @@ import {
 } from "@/lib/consolidated-report";
 import { PH_DEFAULT_EXCHANGE_RATE, processPhilippinesRows } from "@/lib/philippines-report";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
-import { renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export";
+import { larkSentMessage, renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload, type LarkFormat } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
 import { POS_SOURCE_SHEET } from "@/types/financial-management";
 
@@ -68,8 +69,27 @@ export function ConsolidatedReport() {
   const [shopResults, setShopResults] = useState<Record<number, PancakeSyncResult>>({});
   const [activeShop, setActiveShop] = useState<Record<string, number>>({});
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
+  // The user picked one Philippines shop instead of the merged report (which is the default once two or more are fetched).
+  const [phSingle, setPhSingle] = useState(false);
 
-  const phRows = data?.phRows ?? null;
+  // Philippines shops fetched for the same range are added together into one report.
+  const phGroup = useMemo(() => mergeablePhResults(Object.values(shopResults)), [shopResults]);
+  const phMerged = !phSingle && phGroup.length > 1;
+  const phRows = useMemo(
+    () => (phMerged ? mergePhRows(phGroup.map((result) => result.phRows ?? [])) : (data?.phRows ?? null)),
+    [phMerged, phGroup, data?.phRows],
+  );
+  const phExtras = useMemo(() => {
+    if (!phMerged) {
+      const shown = shopResults[activeShop.PHP];
+      return { previousDay: shown?.previousDay, refundTrend: shown?.refundTrend, openOrders: shown?.openOrders };
+    }
+    return {
+      previousDay: mergePreviousDay(phGroup.map((result) => result.previousDay)),
+      refundTrend: mergeRefundTrend(phGroup.map((result) => result.refundTrend)),
+      openOrders: mergeOpenOrders(phGroup.map((result) => result.openOrders)),
+    };
+  }, [phMerged, phGroup, shopResults, activeShop.PHP]);
   // While the field is empty or invalid (e.g. mid-typing), keep rendering with the default rate.
   const phRateValue = Number(phRate) > 0 ? Number(phRate) : PH_DEFAULT_EXCHANGE_RATE;
   const phRateInvalid = !(Number(phRate) > 0);
@@ -91,6 +111,7 @@ export function ConsolidatedReport() {
   const canExport = available[tab] && !(tab === "ph" && !phResult?.report);
   // The cumulative reconciliation needs the Pancake shop on screen; a report read from an Excel file has none.
   const reconcileOf = (currency: "VND" | "PHP") => {
+    if (currency === "PHP" && phMerged) return { shopId: phGroup.map((result) => result.shop.id), to: phGroup[0].range.to };
     const result = shopResults[activeShop[currency]];
     return result ? { shopId: result.shop.id, to: result.range.to } : undefined;
   };
@@ -103,6 +124,7 @@ export function ConsolidatedReport() {
       // The file replaces every report, so the Pancake shops fetched before no longer describe what is on screen.
       setShopResults({});
       setActiveShop({});
+      setPhSingle(false);
       setData(parsed);
       setFileName(label);
       setSummary("");
@@ -204,14 +226,14 @@ export function ConsolidatedReport() {
     }
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     // The performance tab swaps its editable summary for static text while `exporting` is set.
-    setExporting("image");
+    setExporting(format === "pdf" ? "pdf" : "image");
     try {
-      await sendReportToLark(reportRefs[tab].current, `${filenameBase()}.png`);
-      setNotice({ type: "success", message: `Đã gửi ảnh báo cáo “${REPORT_LABELS[tab]}” tới nhóm Lark.` });
+      await sendReportToLark(reportRefs[tab].current, `${filenameBase()}.png`, { format, pdf: { format: PDF_FORMAT[tab] } });
+      setNotice({ type: "success", message: larkSentMessage(format, `“${REPORT_LABELS[tab]}”`) });
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." });
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
     } finally {
       setExporting(null);
     }
@@ -287,7 +309,11 @@ export function ConsolidatedReport() {
       <ShopSwitcher
         results={Object.values(shopResults)}
         active={activeShop}
-        onPick={(result) => syncFromPancake(result, { keepTab: true })}
+        onPick={(result) => {
+          if (result.shop.currency.toUpperCase() === "PHP") setPhSingle(true);
+          syncFromPancake(result, { keepTab: true });
+        }}
+        phMerge={phGroup.length > 1 ? { count: phGroup.length, active: phMerged, onPick: () => setPhSingle(false) } : undefined}
       />
 
       {!data ? (
@@ -344,6 +370,7 @@ export function ConsolidatedReport() {
                     reportRef={performanceRef}
                     dailyRows={data.performance.dailyRows}
                     cumulativeRows={data.performance.cumulativeRows}
+                    sharedCosts={data.performance.sharedCosts}
                     reportDate={data.performance.reportDate ?? ""}
                     summary={summary}
                     onSummaryChange={setSummary}
@@ -392,7 +419,9 @@ export function ConsolidatedReport() {
                     <p className={cn("max-w-xl pb-2 text-xs", phRateInvalid ? "text-destructive" : "text-muted-foreground")}>
                       {phRateInvalid
                         ? `Tỷ giá phải lớn hơn 0, đang tạm dùng ${PH_DEFAULT_EXCHANGE_RATE}.`
-                        : "Chỉ áp dụng cho những ngày không có tỷ giá riêng trong cột “Tỷ giá PHP-VND” của sheet."}
+                        : phMerged
+                          ? `Báo cáo gộp ${phGroup.length} shop (${phGroup.map((result) => result.shop.name).join(" + ")}): cộng số liệu từng shop theo ngày, chi phí Ads Meta (nhãn PH) chỉ tính một lần.`
+                          : "Chỉ áp dụng cho những ngày không có tỷ giá riêng trong cột “Tỷ giá PHP-VND” của sheet."}
                     </p>
                   </CardContent>
                 </Card>
@@ -400,7 +429,7 @@ export function ConsolidatedReport() {
                   <>
                     <AiAnalysisPanel reportType="philippines" getData={() => buildPhAnalysisData(phResult.report!)} />
                     <ReportViewport>
-                      <PhFinanceView reportRef={phRef} report={phResult.report} reconcile={reconcileOf("PHP")} />
+                      <PhFinanceView reportRef={phRef} report={phResult.report} reconcile={reconcileOf("PHP")} previousDay={phExtras.previousDay} refundTrend={phExtras.refundTrend} openOrders={phExtras.openOrders} mergedShops={phMerged ? phGroup.map((result) => result.shop.name) : undefined} />
                     </ReportViewport>
                   </>
                 ) : (
@@ -427,10 +456,13 @@ function ShopSwitcher({
   results,
   active,
   onPick,
+  phMerge,
 }: {
   results: PancakeSyncResult[];
   active: Record<string, number>;
   onPick: (result: PancakeSyncResult) => void;
+  /** Philippines shops that can be added together into one report (shown first in that row). */
+  phMerge?: { count: number; active: boolean; onPick: () => void };
 }) {
   const groups = new Map<string, PancakeSyncResult[]>();
   for (const result of results) {
@@ -445,8 +477,18 @@ function ShopSwitcher({
       {multi.map(([currency, list]) => (
         <div key={currency} className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-muted-foreground">{CURRENCY_TITLE[currency] ?? currency}:</span>
+          {currency === "PHP" && phMerge ? (
+            <Button size="xs" variant={phMerge.active ? "default" : "outline"} aria-pressed={phMerge.active} onClick={phMerge.onPick}>
+              Gộp {phMerge.count} shop
+            </Button>
+          ) : null}
           {list.map((result) => (
-            <Button key={result.shop.id} size="xs" variant={active[currency] === result.shop.id ? "default" : "outline"} onClick={() => onPick(result)}>
+            <Button
+              key={result.shop.id}
+              size="xs"
+              variant={active[currency] === result.shop.id && !(currency === "PHP" && phMerge?.active) ? "default" : "outline"}
+              onClick={() => onPick(result)}
+            >
               {result.shop.name}
             </Button>
           ))}

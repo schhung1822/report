@@ -19,6 +19,9 @@ export interface RawDailyFinanceRow {
   cogs: RawNumericValue;
   ads: RawNumericValue;
   shippingFees: RawNumericValue;
+  /** The two legs of the per-order shipping (PED to the Philippines, inside the Philippines); only set when shippingFees is that rate. */
+  shippingPedPh?: RawNumericValue;
+  shippingPh?: RawNumericValue;
   payroll: RawNumericValue;
 
   /** Outsourced services (fixed costs), other selling costs and the inventory-risk provision; all optional, 0 when omitted. */

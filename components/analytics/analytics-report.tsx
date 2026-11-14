@@ -60,7 +60,7 @@ export function AnalyticsReport({ dataset, metaAds, reportRef }: { dataset: PosD
       />
 
       <div className="space-y-8 p-10">
-        <ReportSection index="01" title="Chỉ số chính" description="Doanh thu thực tế = đơn chốt trừ đơn hoàn trong kỳ">
+        <ReportSection index="01" title="Chỉ số chính" description="Doanh thu thực tế = đơn chốt trừ đơn hoàn (hoàn tính vào ngày tạo đơn)">
           <div className="grid grid-cols-4 gap-4">
             <StatCard label="Doanh thu thực tế" value={money(kpi.netRevenue)} helper={`${numberText(kpi.netOrders, 0)} đơn (chốt − hoàn)`} icon={<Banknote />} />
             <StatCard
@@ -205,6 +205,7 @@ export function AnalyticsReport({ dataset, metaAds, reportRef }: { dataset: PosD
                     <TableBody>
                       <BridgeRow label="Tổng đơn trên POS (mọi trạng thái)" orders={bridge.pos.orders} amount={bridge.pos.amount} money={money} />
                       <BridgeRow label="− Đơn huỷ" orders={-bridge.canceled.orders} amount={-bridge.canceled.amount} money={money} negative />
+                      <BridgeRow label="− Đơn mới (chưa xác nhận)" orders={-bridge.newOrders.orders} amount={-bridge.newOrders.amount} money={money} negative />
                       {Math.abs(bridge.returnedAdjustment) >= 1 ? (
                         <BridgeRow label="± Đơn Pancake tính lại giá trị (đơn hoàn...)" amount={-bridge.returnedAdjustment} money={money} negative />
                       ) : null}

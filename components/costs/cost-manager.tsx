@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
+import { CogsRatesPanel } from "@/components/costs/cogs-rates-panel";
 import { DailyCostSheet } from "@/components/costs/daily-cost-sheet";
+import { LegacyTotalsPanel } from "@/components/costs/legacy-totals-panel";
+import { OrderRatesPanel } from "@/components/costs/order-rates-panel";
+import { ShopPayPanel } from "@/components/costs/shop-pay-panel";
 import { StaffPayPanel } from "@/components/costs/staff-pay-panel";
 import { Notice, type NoticeState } from "@/components/notice";
 import { PageHeader } from "@/components/report-ui";
@@ -40,7 +44,7 @@ const CONTROL =
 const INPUT = "h-8 px-2 text-xs";
 const LABEL = "text-[11px] text-muted-foreground";
 
-type Tab = "staff" | "sheet" | "entries" | "preview";
+type Tab = "staff" | "pay" | "sheet" | "rates" | "cogs" | "legacy" | "entries" | "preview";
 type ScopeFilter = "all" | CostScopeKind;
 
 type FormState = {
@@ -110,7 +114,7 @@ export function CostManager() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
-  const [tab, setTab] = useState<Tab>("staff");
+  const [tab, setTab] = useState<Tab>("sheet");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   /** One date range for the whole page: the accountant's sheet and the allocation preview both read it. */
   const [from, setFrom] = useState("");
@@ -121,7 +125,10 @@ export function CostManager() {
   const perWorkDay = form.scope === "staff" && form.period === "monthly";
   const loading = Boolean(shopId) && loadedFor !== shopId;
   const money = useMemo(() => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }), []);
-  const unit = shop?.currency.toUpperCase() === "PHP" ? "₱" : "₫";
+  const isPhilippines = shop?.currency.toUpperCase() === "PHP";
+  const unit = isPhilippines ? "₱" : "₫";
+  /** The per-order rates only exist for the Philippines shop: another shop falls back to the first tab. */
+  const activeTab: Tab = (tab === "rates" || tab === "cogs" || tab === "legacy") && !isPhilippines ? "sheet" : tab === "pay" && isPhilippines ? "sheet" : tab;
   const rangeValid = Boolean(from) && Boolean(to) && from <= to;
   const days = rangeValid ? dayCount(from, to) : 0;
 
@@ -277,7 +284,7 @@ export function CostManager() {
       header={
         <PageHeader
           title="Chi phí cố định"
-          description="Chi phí không có trong Pancake POS: bảng kế toán theo ngày và các khoản cố định / hằng tháng. Báo cáo tự lấy khi đồng bộ."
+          description="Chi phí không có trong Pancake POS. Nhập chi phí theo ngày (giá vốn, phí giao hàng, chi phí khác), lương nhân sự và các khoản cố định hằng tháng; báo cáo tự lấy khi đồng bộ."
         />
       }
       aside={
@@ -337,10 +344,10 @@ export function CostManager() {
 
           <ConfigSection title="Quy tắc tính" collapsible defaultOpen={false}>
             <ul className="list-disc space-y-1 pl-4 text-[11px] leading-relaxed text-muted-foreground">
-              <li>Hằng tháng: chia đều theo số ngày của tháng. Hằng ngày: mỗi ngày đúng số đó. Một lần: tính vào đúng ngày phát sinh.</li>
-              <li>Lương nhân sự nhập ở tab “Lương nhân sự” (bấm Quét nhân viên): lương ÷ số công chuẩn, chỉ tính ngày nhân viên có đơn trong POS.</li>
+              <li>Chi phí cố định hằng tháng (thuê mặt bằng, phần mềm…) nhập một lần, hệ thống tự chia đều ra từng ngày. Hằng tháng: chia đều theo số ngày của tháng. Hằng ngày: mỗi ngày đúng số đó. Một lần: tính vào đúng ngày phát sinh.</li>
+              <li>Lương nhân sự nhập ở tab “Lương nhân sự” (bấm Quét nhân viên): lương ÷ số công chuẩn, chỉ tính ngày nhân viên có đơn trong POS. Shop Phil: lương + thưởng cả tháng quy ra peso theo tỷ giá trung bình rồi chia cho từng ngày theo doanh thu ngày ÷ doanh thu cả tháng (không dùng số công chuẩn).</li>
               <li>Chi phí ads không nhập: lấy tự động từ Ads Meta của các tài khoản đã gắn nhãn shop.</li>
-              <li>Bảng kế toán theo ngày chỉ nhận giá vốn hoàn, chi phí cố định/khác (Phil: giá vốn, giao hàng, thuế…). Ngày nào có số thì thay cho số ước tính của đúng ngày và khoản đó.</li>
+              <li>Chi phí theo ngày: Việt Nam nhập giá vốn hoàn, chi phí cố định/khác của từng kênh; Phil: giá vốn tính theo danh mục (tab “Giá vốn theo danh mục”: số sản phẩm bán ra × giá vốn trung bình), chỉ nhập giá vốn từng ngày khi muốn thay số của ngày đó; dịch vụ mua ngoài, giao hàng, chi phí khác, thuế/phí tự tính theo số sản phẩm bán ra × đơn giá ở tab “Đơn giá theo sản phẩm”, chỉ nhập khi muốn thay số của một ngày. Ngày nào có số thì thay cho số ước tính hằng tháng của đúng ngày và khoản đó.</li>
             </ul>
           </ConfigSection>
         </>
@@ -357,17 +364,37 @@ export function CostManager() {
       ) : null}
       <Notice notice={notice} />
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="gap-3">
+      <Tabs value={activeTab} onValueChange={(value) => setTab(value as Tab)} className="gap-3">
         <div className="overflow-x-auto">
           <TabsList className="h-9 min-w-max gap-1 border p-1 shadow-xs">
+            <TabsTrigger value="sheet" className={triggerClass}>
+              Chi phí theo ngày
+            </TabsTrigger>
+            {isPhilippines ? (
+              <TabsTrigger value="cogs" className={triggerClass}>
+                Giá vốn theo danh mục
+              </TabsTrigger>
+            ) : null}
+            {isPhilippines ? (
+              <TabsTrigger value="rates" className={triggerClass}>
+                Đơn giá theo sản phẩm
+              </TabsTrigger>
+            ) : null}
+            {isPhilippines ? (
+              <TabsTrigger value="legacy" className={triggerClass}>
+                Shop Phil cũ
+              </TabsTrigger>
+            ) : null}
+            {!isPhilippines ? (
+              <TabsTrigger value="pay" className={triggerClass}>
+                Lương & định phí tổng
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="staff" className={triggerClass}>
               Lương nhân sự
             </TabsTrigger>
-            <TabsTrigger value="sheet" className={triggerClass}>
-              Bảng kế toán theo ngày
-            </TabsTrigger>
             <TabsTrigger value="entries" className={triggerClass}>
-              Khoản cố định / hằng tháng
+              Chi phí cố định hằng tháng
               <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
                 {entries.length}
               </Badge>
@@ -380,6 +407,22 @@ export function CostManager() {
 
         <TabsContent value="staff">
           <StaffPayPanel shop={shop} configured={configured} from={from} to={to} onSaved={() => setReloadToken((token) => token + 1)} />
+        </TabsContent>
+
+        <TabsContent value="pay">
+          <ShopPayPanel shop={shop} configured={configured} onSaved={() => setReloadToken((token) => token + 1)} />
+        </TabsContent>
+
+        <TabsContent value="cogs">
+          <CogsRatesPanel shop={shop} configured={configured} />
+        </TabsContent>
+
+        <TabsContent value="rates">
+          <OrderRatesPanel shop={shop} configured={configured} />
+        </TabsContent>
+
+        <TabsContent value="legacy">
+          <LegacyTotalsPanel shop={shop} configured={configured} />
         </TabsContent>
 
         <TabsContent value="sheet">
@@ -428,7 +471,7 @@ export function CostManager() {
                     <Field id="cost-label" label="Tên khoản">
                       <Input id="cost-label" className={INPUT} placeholder="Ví dụ: Thuê mặt bằng" maxLength={160} value={form.label} onChange={(event) => update("label", event.target.value)} />
                     </Field>
-                    <Field id="cost-amount" label={`Số tiền (${unit})`}>
+                    <Field id="cost-amount" label={`Số tiền (${unit === "₱" && form.scope === "staff" ? "₫, quy đổi sang ₱ trong báo cáo" : unit})`}>
                       <Input id="cost-amount" className={INPUT} type="number" min="0" step="0.01" inputMode="decimal" required value={form.amount} onChange={(event) => update("amount", event.target.value)} />
                     </Field>
                     <Field id="cost-period" label="Chu kỳ">
@@ -525,7 +568,10 @@ export function CostManager() {
                         {entry.label ? <span className="block text-[11px] text-muted-foreground">{COST_TYPE_LABELS[entry.costType]}</span> : null}
                       </TableCell>
                       <TableCell>{scopeText(entry)}</TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">{money.format(entry.amount)}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {money.format(entry.amount)}
+                        {unit === "₱" && entry.scope === "staff" ? <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">₫</span> : null}
+                      </TableCell>
                       <TableCell>
                         {COST_PERIOD_LABELS[entry.period].replace(" (chia đều theo ngày)", "")}
                         {entry.workDays ? <span className="block text-[11px] text-muted-foreground">{entry.workDays} công chuẩn, chỉ ngày có đơn</span> : null}

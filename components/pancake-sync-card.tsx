@@ -37,6 +37,9 @@ const SUPPORTED_CURRENCIES = ["VND", "PHP"];
 const ALL_SHOPS = "all";
 const BATCH_CONCURRENCY = 3;
 
+/** An ISO instant in the browser's time zone ("05/11 11:00"). */
+const localTime = (iso: string) => new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -73,6 +76,8 @@ export function PancakeSyncCard({ onSynced, currencies, hint, allowAllShops = fa
   const [useMetaAds, setUseMetaAds] = useState(true);
   const labelCount = (market: "VN" | "PH") => adsLabels.labels.filter((label) => label.market === market).length;
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Reports on screen that were fetched before costs of their shop and days were saved: they show the old figures.
+  const [outdated, setOutdated] = useState<{ shopId: number; name: string; from: string; to: string; changedAt: string; fetchedAt: string }[]>([]);
   // The page's handler changes on every render; the restore below runs once, so it reads the latest one from a ref.
   const onSyncedRef = useRef(onSynced);
   // Set once the user has fetched or opened a report, so a slow restore never overwrites it.
@@ -172,6 +177,28 @@ export function PancakeSyncCard({ onSynced, currencies, hint, allowAllShops = fa
     };
   }, [currencyKey, showStored, allowAllShops]);
 
+  // Costs are typed on other pages (Bảng lợi nhuận, Chi phí cố định) and only reach a report when it is fetched again, so a report
+  // on screen (a stored one in particular) is compared with when its costs were last saved.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      results.map(async (result) => {
+        try {
+          const { changedAt } = await getJson<{ changedAt: string | null }>(`/api/costs/changes?shopId=${result.shop.id}&from=${result.range.from}&to=${result.range.to}`);
+          if (!changedAt || Date.parse(changedAt) <= Date.parse(result.fetchedAt)) return null;
+          return { shopId: result.shop.id, name: result.shop.name, from: result.range.from, to: result.range.to, changedAt, fetchedAt: result.fetchedAt };
+        } catch {
+          return null; // A convenience: never block the page because it cannot be read.
+        }
+      }),
+    ).then((found) => {
+      if (!cancelled) setOutdated(found.filter((item): item is NonNullable<typeof item> => item !== null));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [results]);
+
   function openFromHistory(result: PancakeSyncResult) {
     touchedRef.current = true;
     onSynced(result);
@@ -218,7 +245,7 @@ export function PancakeSyncCard({ onSynced, currencies, hint, allowAllShops = fa
   }
 
   /** Fetches the selected shop, or every supported shop in "all shops" mode. `onlyShopId` re-fetches just that one. */
-  async function sync(onlyShopId?: number) {
+  async function sync(onlyShopId?: number, range = { from, to }) {
     touchedRef.current = true;
     const batch = onlyShopId === undefined && shopId === ALL_SHOPS;
     const targets: { id: number; name: string }[] = onlyShopId !== undefined
@@ -234,7 +261,7 @@ export function PancakeSyncCard({ onSynced, currencies, hint, allowAllShops = fa
         targets,
         BATCH_CONCURRENCY,
         async (target) => {
-          const result = await postJson<PancakeSyncResult>("/api/pancake/sync", { from, to, shopId: target.id, costs, useMetaAds });
+          const result = await postJson<PancakeSyncResult>("/api/pancake/sync", { from: range.from, to: range.to, shopId: target.id, costs, useMetaAds });
           onSynced(result);
           return result;
         },
@@ -344,6 +371,29 @@ export function PancakeSyncCard({ onSynced, currencies, hint, allowAllShops = fa
           <Notice notice={{ type: "warning", message: `API key không dùng được (các shop còn lại vẫn hoạt động): ${keyProblems.join(" | ")}` }} />
         ) : null}
         <Notice notice={notice} />
+
+        {outdated.length ? (
+          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {outdated.map((item) => (
+              <p key={item.shopId}>
+                Chi phí của {item.name} vừa được cập nhật lúc {localTime(item.changedAt)}, sau lần lấy báo cáo này (lúc {localTime(item.fetchedAt)}), nên báo cáo đang hiện số cũ.
+              </p>
+            ))}
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={loading}
+              onClick={() =>
+                void (async () => {
+                  for (const item of outdated) await sync(item.shopId, { from: item.from, to: item.to });
+                })()
+              }
+            >
+              {loading ? <LoaderCircle className="animate-spin" /> : <CloudDownload />}
+              Áp dụng chi phí mới
+            </Button>
+          </div>
+        ) : null}
 
         {warningLines.length ? (
           <details open={hasAlarm} className="rounded-lg border bg-muted/30 px-2.5 py-1.5">

@@ -86,7 +86,9 @@ function currentCell(entries: CostEntry[], staffName: string, costType: StaffCos
  */
 export function StaffCostTable({ source, onSaved, embedded = false, variant = "report" }: Props) {
   const shopId = source.shopId;
-  const unit = source.currency.toUpperCase() === "PHP" ? "₱" : "₫";
+  // Staff are paid in dong even in the Philippines shop: the report converts their pay to pesos with the rate of each day.
+  const unit = "₫";
+  const inPesos = source.currency.toUpperCase() === "PHP";
   const onReport = variant === "report";
 
   const [entries, setEntries] = useState<CostEntry[]>([]);
@@ -229,6 +231,7 @@ export function StaffCostTable({ source, onSaved, embedded = false, variant = "r
           <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
             Nhập <strong>lương cứng</strong>, <strong>thưởng</strong> mỗi tháng ({unit}) và <strong>số công chuẩn</strong>. Chi phí TB mỗi ngày = (lương + thưởng) ÷ số công
             chuẩn, chỉ tính cho ngày nhân sự có đơn hoặc doanh thu. Đổi mức thì chọn ngày áp dụng mới, các kỳ trước giữ nguyên.
+            {inPesos ? " Shop Philippines: nhập bằng đồng, báo cáo tự quy đổi sang peso theo tỷ giá từng ngày." : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">

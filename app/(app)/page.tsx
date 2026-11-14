@@ -6,6 +6,7 @@ import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
 import { PancakeSyncCard } from "@/components/pancake-sync-card";
+import { ExpenseLedgerEditor } from "@/components/daily/expense-ledger-editor";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-ui";
 import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
@@ -13,9 +14,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildDailyAnalysisData } from "@/lib/analysis-data";
-import { DAILY_SAMPLE_DATA, deriveDaily, parseDailyRows, type DailyReportData } from "@/lib/daily-report";
+import { DAILY_SAMPLE_DATA, deriveDaily, parseDailyRows, type DailyReportData, type Expense } from "@/lib/daily-report";
+import { loadExpenseDraft, reportExpenses, saveExpenseDraft } from "@/lib/daily-expenses";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
-import { renderReportToPng, safeFilePart, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export";
+import {
+  larkSentMessage,
+  renderReportToPng,
+  safeFilePart,
+  saveReportAsPdf,
+  sendReportToLark,
+  triggerDownload,
+  type LarkFormat,
+} from "@/lib/report-export";
 import { readWorkbookSheets } from "@/lib/workbook";
 
 export default function Home() {
@@ -30,7 +40,14 @@ export default function Home() {
   const [isParsing, setIsParsing] = useState(false);
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
 
-  const { expenseGroups } = deriveDaily(reportData);
+  // The report shows the ledger without the blank rows being typed.
+  const viewData = { ...reportData, expenses: reportExpenses(reportData.expenses) };
+  const { expenseGroups } = deriveDaily(viewData);
+
+  function updateExpenses(expenses: Expense[]) {
+    setReportData((current) => ({ ...current, expenses }));
+    saveExpenseDraft(reportData.reportDate, expenses);
+  }
 
   async function parseFile(file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase();
@@ -47,6 +64,7 @@ export default function Home() {
 
       const { data, rowCount, missingColumns } = parseDailyRows(firstSheet.rows);
       setReportData(data);
+      saveExpenseDraft(data.reportDate, data.expenses);
       setFileName(file.name);
       setNotice({
         type: "success",
@@ -112,12 +130,12 @@ export default function Home() {
     }
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.png`);
-      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." });
+      await sendReportToLark(reportRef.current, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.png`, { format });
+      setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." });
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
     }
   }
 
@@ -138,10 +156,11 @@ export default function Home() {
         <>
           <PancakeSyncCard
             currencies={["VND"]}
-            hint="Tự lấy doanh số, tiền chuyển khoản, COD phải thu và phí vận chuyển từ shop Việt Nam. Khoản chi NCC vẫn nhập qua file."
+            hint="Tự lấy doanh số, tiền chuyển khoản, COD phải thu và phí vận chuyển từ shop Việt Nam. Khoản chi NCC nhập ở bảng kê bên dưới."
             onSynced={({ daily }) => {
               if (!daily) return;
-              setReportData(daily);
+              // POS has no cash-out ledger: keep what was typed for that date.
+              setReportData({ ...daily, expenses: loadExpenseDraft(daily.reportDate) ?? [] });
               setFileName("");
             }}
           />
@@ -181,7 +200,7 @@ export default function Home() {
             </div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] text-muted-foreground">
-                {expenseGroups.length} nhóm người chi · {reportData.expenses.length} khoản chi NCC
+                {expenseGroups.length} nhóm người chi · {viewData.expenses.length} khoản chi NCC
               </p>
               <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={resetToSample}>
                 <RefreshCcw />
@@ -194,10 +213,12 @@ export default function Home() {
     >
       <Notice notice={notice} />
 
-      <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(reportData, companyName)} />
+      <ExpenseLedgerEditor expenses={reportData.expenses} reportDate={reportData.reportDate} onChange={updateExpenses} />
+
+      <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(viewData, companyName)} />
 
       <ReportViewport>
-        <DailyReportView reportRef={reportRef} data={reportData} companyName={companyName} />
+        <DailyReportView reportRef={reportRef} data={viewData} companyName={companyName} />
       </ReportViewport>
     </ReportWorkspace>
   );

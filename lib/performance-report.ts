@@ -15,6 +15,9 @@ export type DailyPerformanceRow = {
   netProfit: number;
 };
 
+/** Costs of the shop that name no staff member (a monthly salary or fixed-cost total): the ledger shows them on a line of their own. */
+export type SharedPerformanceCosts = { salary: number; fixedCost: number };
+
 export type CumulativePerformanceRow = {
   name: string;
   totalOrders: number;
@@ -24,6 +27,10 @@ export type CumulativePerformanceRow = {
   totalProfit: number;
   receivedRevenue: number;
   receivedProfit: number;
+  /** Costs of the received orders read from the POS (absent in a file that does not have them): cost of goods, carrier fee, ad spend. */
+  cogs?: number;
+  shipping?: number;
+  ads?: number;
 };
 
 export type ParsedPerformanceFile = {
@@ -305,7 +312,8 @@ export function parsePerformanceSheets(allSheets: SheetData[]): ParsedPerformanc
 }
 
 /** Team totals plus the groupings the performance report needs (revenue split and net-profit ranking). */
-export function summarizePerformance(dailyRows: DailyPerformanceRow[]) {
+export function summarizePerformance(dailyRows: DailyPerformanceRow[], shared?: SharedPerformanceCosts) {
+  const sharedCost = shared ? shared.salary + shared.fixedCost : 0;
   const overview = dailyRows.reduce(
     (total, row) => ({
       revenue: total.revenue + row.revenue,
@@ -313,7 +321,8 @@ export function summarizePerformance(dailyRows: DailyPerformanceRow[]) {
       grossProfit: total.grossProfit + row.grossProfit,
       netProfit: total.netProfit + row.netProfit,
     }),
-    { revenue: 0, cost: 0, grossProfit: 0, netProfit: 0 },
+    // The shop's own costs are on no staff member's row; they come off the profit of the whole team.
+    { revenue: 0, cost: sharedCost, grossProfit: -sharedCost, netProfit: -sharedCost },
   );
 
   const totals = new Map([

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MAX_ADS_RANGE_DAYS, type AdsReport } from "@/lib/ads/types"
 import { dayCount, localDate, RANGE_PRESETS } from "@/lib/range-presets"
-import { renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export"
+import { larkSentMessage, renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload, type LarkFormat } from "@/lib/report-export"
 
 const noopSubscribe = () => () => {}
 
@@ -100,12 +100,12 @@ export function AdsPage() {
     }
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `${baseName}.png`)
-      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." })
+      await sendReportToLark(reportRef.current, `${baseName}.png`, { format, pdf: { format: "a3" } })
+      setNotice({ type: "success", message: larkSentMessage(format) })
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." })
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." })
     }
   }
 

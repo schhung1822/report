@@ -1,6 +1,8 @@
 import { getSessionUser } from "@/lib/auth";
 import { CostDbError, isMysqlConfigured } from "@/lib/costs/db";
 import { createEntry, listEntries } from "@/lib/costs/repository";
+import { monthStart } from "@/lib/pancake/dates";
+import { invalidatePnlDays } from "@/lib/pnl/repository";
 import { validateCostEntryInput } from "@/lib/costs/validate";
 
 function fail(message: string, status: number) {
@@ -38,7 +40,10 @@ export async function POST(request: Request) {
   if (!parsed.ok) return fail(parsed.error, 400);
 
   try {
-    return Response.json({ entry: await createEntry(parsed.value, user) }, { status: 201 });
+    const entry = await createEntry(parsed.value, user);
+    // A monthly cost reaches the days of its month (the Philippines payroll is shared by the month's revenue).
+    await invalidatePnlDays(parsed.value.shopId, monthStart(parsed.value.validFrom));
+    return Response.json({ entry }, { status: 201 });
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);
     return fail("Không thể lưu khoản chi phí.", 500);

@@ -1,6 +1,8 @@
 import { getSessionUser } from "@/lib/auth";
 import { CostDbError } from "@/lib/costs/db";
 import { applyStaffCosts } from "@/lib/costs/repository";
+import { monthStart } from "@/lib/pancake/dates";
+import { invalidatePnlDays } from "@/lib/pnl/repository";
 import { validateStaffCostRequest } from "@/lib/costs/staff";
 
 function fail(message: string, status: number) {
@@ -23,6 +25,7 @@ export async function POST(request: Request) {
 
   try {
     const changed = await applyStaffCosts(parsed.shopId, parsed.validFrom, parsed.items, user);
+    await invalidatePnlDays(parsed.shopId, monthStart(parsed.validFrom));
     return Response.json({ ok: true, changed });
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);

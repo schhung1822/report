@@ -9,7 +9,15 @@ import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-u
 import { ReportWorkspace } from "@/components/report-workspace"
 import { SendToLarkButton } from "@/components/send-to-lark-button"
 import { Card, CardContent } from "@/components/ui/card"
-import { renderReportToPng, safeFilePart, saveReportAsPdf, sendReportToLark, triggerDownload } from "@/lib/report-export"
+import {
+  larkSentMessage,
+  renderReportToPng,
+  safeFilePart,
+  saveReportAsPdf,
+  sendReportToLark,
+  triggerDownload,
+  type LarkFormat,
+} from "@/lib/report-export"
 import type { PancakeSyncResult } from "@/lib/pancake/types"
 
 export function AnalyticsPage() {
@@ -46,12 +54,12 @@ export function AnalyticsPage() {
     }
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `${baseName}.png`)
-      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." })
+      await sendReportToLark(reportRef.current, `${baseName}.png`, { format, pdf: { format: "a3" } })
+      setNotice({ type: "success", message: larkSentMessage(format) })
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." })
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." })
     }
   }
 

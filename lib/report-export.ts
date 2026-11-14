@@ -122,19 +122,17 @@ export function planPageCuts(totalHeight: number, pageHeight: number, blocks: Bl
   return cuts;
 }
 
-/** Renders a report element and saves it as a multi-page landscape PDF, breaking pages between blocks. */
-export async function saveReportAsPdf(
-  element: HTMLElement | null,
-  filename: string,
-  { format = "a4", margin = 8 }: { format?: "a4" | "a3"; margin?: number } = {},
-) {
+export type PdfOptions = { format?: "a4" | "a3"; margin?: number };
+
+/** Renders a report element into a multi-page landscape PDF document, breaking pages between blocks. */
+async function buildReportPdf(element: HTMLElement | null, { format = "a4", margin = 8 }: PdfOptions = {}, pixelRatio = 2) {
   if (!element) throw new Error("Không tìm thấy vùng báo cáo.");
   settleChartAnimations();
   await waitForPaint();
   const blocks = collectBlocks(element);
   const reportWidth = element.scrollWidth;
   const reportHeight = element.scrollHeight;
-  const dataUrl = await renderReportToPng(element);
+  const dataUrl = await renderReportToPng(element, pixelRatio);
   const [{ jsPDF }, image] = await Promise.all([
     import("jspdf"),
     new Promise<HTMLImageElement>((resolve, reject) => {
@@ -167,7 +165,24 @@ export async function saveReportAsPdf(
     if (page > 0) pdf.addPage(format, "landscape");
     pdf.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, printableWidth, (height * printableWidth) / image.width, undefined, "FAST");
   }
-  pdf.save(filename);
+  return pdf;
+}
+
+/** Renders a report element and saves it as a multi-page landscape PDF, breaking pages between blocks. */
+export async function saveReportAsPdf(element: HTMLElement | null, filename: string, options: PdfOptions = {}) {
+  (await buildReportPdf(element, options)).save(filename);
+}
+
+// Lark accepts files up to 30 MB; stay a little under it.
+const LARK_PDF_MAX_BYTES = 29 * 1024 * 1024;
+
+/** Renders a report element to a PDF Blob, lowering resolution if needed to stay under maxBytes. */
+export async function renderReportToPdfBlob(element: HTMLElement | null, options: PdfOptions = {}, maxBytes = LARK_PDF_MAX_BYTES) {
+  for (const pixelRatio of [2, 1.5, 1]) {
+    const blob = (await buildReportPdf(element, options, pixelRatio)).output("blob");
+    if (blob.size <= maxBytes || pixelRatio === 1) return blob;
+  }
+  throw new Error("Không thể tạo file PDF đủ nhỏ để gửi.");
 }
 
 /** Renders a report element to a PNG Blob, lowering resolution if needed to stay under maxBytes. */
@@ -180,12 +195,35 @@ export async function renderReportToBlob(element: HTMLElement | null, maxBytes =
   throw new Error("Không thể tạo ảnh đủ nhỏ để gửi.");
 }
 
-/** Sends a report image to the configured Lark group via our API route. Throws Error with a user-facing message. */
-export async function sendReportToLark(element: HTMLElement | null, filename: string) {
-  const blob = await renderReportToBlob(element);
+/** What the "Gửi Lark" button can send: the report as a PNG picture or as a PDF file. */
+export type LarkFormat = "image" | "pdf";
+
+export const LARK_FORMAT_LABEL: Record<LarkFormat, string> = { image: "ảnh", pdf: "file PDF" };
+
+/** The notice shown after a successful send, e.g. "Đã gửi file PDF báo cáo tới nhóm Lark." */
+export const larkSentMessage = (format: LarkFormat, report = "báo cáo") => `Đã gửi ${LARK_FORMAT_LABEL[format]} ${report} tới nhóm Lark.`;
+
+/**
+ * Sends a report to the configured Lark group via our API routes, as a PNG image (default) or a PDF file.
+ * `filename` is the PNG name; for a PDF its extension is swapped. Throws Error with a user-facing message.
+ */
+export async function sendReportToLark(
+  element: HTMLElement | null,
+  filename: string,
+  { format = "image", pdf }: { format?: LarkFormat; pdf?: PdfOptions } = {},
+) {
   const form = new FormData();
-  form.append("image", new File([blob], filename, { type: "image/png" }));
-  const response = await fetch("/api/lark/send-image", { method: "POST", body: form });
+  let route: string;
+  if (format === "pdf") {
+    const blob = await renderReportToPdfBlob(element, pdf);
+    form.append("file", new File([blob], filename.replace(/\.[^./\\]+$/, "") + ".pdf", { type: "application/pdf" }));
+    route = "/api/lark/send-file";
+  } else {
+    const blob = await renderReportToBlob(element);
+    form.append("image", new File([blob], filename, { type: "image/png" }));
+    route = "/api/lark/send-image";
+  }
+  const response = await fetch(route, { method: "POST", body: form });
   const json = (await response.json().catch(() => null)) as { error?: string } | null;
-  if (!response.ok) throw new Error(json?.error ?? "Không thể gửi ảnh tới Lark.");
+  if (!response.ok) throw new Error(json?.error ?? `Không thể gửi ${LARK_FORMAT_LABEL[format]} tới Lark.`);
 }

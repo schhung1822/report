@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { ChevronDown, Download, FileSpreadsheet, LoaderCircle, Save, Trash2, Upload, X } from "lucide-react";
 import { Notice, type NoticeState } from "@/components/notice";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DailyCostGrid } from "@/components/costs/daily-cost-grid";
 import {
   buildSheetWorkbook,
-  CHANNEL_NAME,
   compareWithStored,
   parseSheetFile,
   SHEET_COLUMNS,
@@ -92,18 +92,6 @@ export function DailyCostSheet({
     };
   }, [rangeKey, shopId, from, to, configured]);
 
-  // Stored cells grouped into the rows of the template: one per day (and channel).
-  const storedRows = useMemo(() => {
-    const rows = new Map<string, { date: string; channel: SheetCell["channel"]; values: Map<string, number> }>();
-    for (const cell of stored) {
-      const key = `${cell.date}|${cell.channel}`;
-      const row = rows.get(key) ?? { date: cell.date, channel: cell.channel, values: new Map<string, number>() };
-      row.values.set(cell.line, cell.amount);
-      rows.set(key, row);
-    }
-    return Array.from(rows.values()).sort((a, b) => a.date.localeCompare(b.date) || a.channel.localeCompare(b.channel));
-  }, [stored]);
-
   const baseName = `chi-phi-ke-toan-${market === "PHP" ? "phil" : "viet"}`;
 
   async function downloadTemplate(withStored: boolean) {
@@ -152,26 +140,32 @@ export function DailyCostSheet({
     }
   }
 
-  async function save() {
-    if (!shop || !file || file.parsed.errors.length) return;
+  async function saveCells(cells: SheetCell[], dayCount: number): Promise<boolean> {
+    if (!shop || !cells.length) return false;
     setBusy("save");
     setNotice(null);
     try {
       const result = await request<{ saved: number }>("/api/costs/daily", {
         method: "POST",
-        body: JSON.stringify({ shopId: shop.id, market, cells: file.parsed.cells }),
+        body: JSON.stringify({ shopId: shop.id, market, cells }),
       });
       setNotice({
         type: "success",
-        message: `Đã lưu ${result.saved} ô chi phí của ${file.parsed.days.length} ngày. Lấy lại dữ liệu ở trang báo cáo để áp dụng.`,
+        message: `Đã lưu ${result.saved} ô chi phí của ${dayCount} ngày. Lấy lại dữ liệu ở trang báo cáo để áp dụng.`,
       });
-      setFile(null);
       setReloadToken((token) => token + 1);
+      return true;
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không lưu được bảng chi phí." });
+      return false;
     } finally {
       setBusy(null);
     }
+  }
+
+  async function save() {
+    if (!file || file.parsed.errors.length) return;
+    if (await saveCells(file.parsed.cells, file.parsed.days.length)) setFile(null);
   }
 
   async function removeRange() {
@@ -197,16 +191,40 @@ export function DailyCostSheet({
     <div className="space-y-3">
       <Notice notice={notice} />
 
+      <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs sm:grid-cols-2">
+        <div>
+          <p className="font-medium">Tự động, không cần nhập</p>
+          <p className="mt-0.5 text-muted-foreground">
+            {market === "PHP"
+              ? "Doanh thu và số đơn (Pancake POS), chi phí ads (Ads Meta), tỷ giá (trang Tỷ giá). Lương nhập ở tab “Lương nhân sự”."
+              : "Doanh thu, giá vốn, phí vận chuyển (Pancake POS), chi phí ads (Ads Meta). Lương nhập ở tab “Lương nhân sự”."}
+          </p>
+        </div>
+        <div>
+          <p className="font-medium">Cần nhập ở bảng dưới (tiền {market === "PHP" ? "peso ₱" : "đồng ₫"}, mỗi ngày{market === "VND" ? " và kênh" : ""})</p>
+          <p className="mt-0.5 text-muted-foreground">
+            {market === "PHP"
+              ? "Giá vốn (POS Phil không có) tự tính theo danh mục khi đã đặt giá vốn trung bình ở tab “Giá vốn theo danh mục”; nếu chưa thì cần nhập để lợi nhuận đúng. Dịch vụ mua ngoài, giao hàng, chi phí khác, thuế/phí tự tính theo số sản phẩm bán ra × đơn giá ở tab “Đơn giá theo sản phẩm”; chỉ nhập khi ngày đó khác mức thường."
+              : "Giá vốn hoàn, chi phí cố định và chi phí khác của từng kênh. Không nhập thì báo cáo dùng số ước tính hằng tháng."}{" "}
+            Muốn nhập ngay trên bảng lợi nhuận cả tháng (thấy lợi nhuận đổi theo từng số):{" "}
+            <Link href="/pnl" className="font-medium text-foreground underline">
+              Bảng lợi nhuận
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {market === "PHP" ? "Mỗi ngày 1 dòng, tiền peso (₱)." : "Mỗi ngày 2 dòng Zalo và Page, tiền đồng (₫)."}{" "}
           {rangeValid ? (
             <span className="font-medium text-foreground">
               {toDmy(from)} – {toDmy(to)}
             </span>
           ) : (
             from ? <span className="text-destructive">Khoảng ngày chưa hợp lệ.</span> : null
-          )}
+          )}{" "}
+          Ô vàng là ô vừa sửa, ô xám là số đã lưu. Excel dùng khi cần nhập nhiều tháng một lần:
         </p>
         <div className="flex flex-wrap gap-1.5">
           <Button variant="outline" size="sm" disabled={disabled || !rangeValid} onClick={() => void downloadTemplate(false)}>
@@ -217,9 +235,9 @@ export function DailyCostSheet({
             {busy === "export" ? <LoaderCircle className="animate-spin" /> : <Download />}
             Xuất số đã lưu
           </Button>
-          <Button size="sm" disabled={disabled} onClick={() => fileInput.current?.click()}>
+          <Button variant="outline" size="sm" disabled={disabled} onClick={() => fileInput.current?.click()}>
             {busy === "read" ? <LoaderCircle className="animate-spin" /> : <Upload />}
-            Nhập file đã điền
+            Nhập file Excel
           </Button>
           <input
             ref={fileInput}
@@ -234,22 +252,18 @@ export function DailyCostSheet({
 
       <details className="group rounded-lg border bg-muted/20 px-3 py-2 text-xs">
         <summary className="flex cursor-pointer list-none items-center justify-between font-medium [&::-webkit-details-marker]:hidden">
-          Cách dùng và các cột của file
+          Ý nghĩa các cột và mẹo nhập nhanh
           <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="mt-2 space-y-2 text-muted-foreground">
-          <ol className="list-decimal space-y-0.5 pl-4">
+          <ul className="list-disc space-y-0.5 pl-4">
+            <li>Gõ số vào ô, Enter hoặc phím ↓ xuống ngày kế tiếp. Số cũ tự hiện sẵn, sửa được.</li>
             <li>
-              Chọn khoảng ngày, bấm <strong className="text-foreground">Tải file mẫu</strong> (hoặc <strong className="text-foreground">Xuất số đã lưu</strong> để sửa tiếp).
+              Đang có bảng tính (Excel, Google Sheets)? Copy cả khối ô rồi dán vào ô đầu tiên: số điền theo đúng hàng và cột. Nhớ để thứ tự cột giống bảng này.
             </li>
-            <li>Kế toán điền số vào file. Ô để trống = giữ nguyên số đã lưu; điền 0 = lưu là 0.</li>
-            <li>
-              Bấm <strong className="text-foreground">Nhập file đã điền</strong>, xem trước rồi lưu. Nhập lại cùng ngày thì ghi đè, không cộng dồn.
-            </li>
-          </ol>
-          <p>
-            Lương nhập ở tab <strong className="text-foreground">Lương nhân sự</strong>; chi phí ads tự lấy từ Ads Meta, nên hai khoản này không có trong file.
-          </p>
+            <li>Ô để trống = giữ nguyên số đã lưu; gõ 0 = lưu là 0. Lưu lại cùng ngày thì ghi đè, không cộng dồn.</li>
+            <li>Ngày nào có số cho một khoản thì thay cho số ước tính hằng tháng của đúng ngày và khoản đó.</li>
+          </ul>
           <ul className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
             {columns.map((column) => (
               <li key={column.line}>
@@ -326,51 +340,24 @@ export function DailyCostSheet({
         </div>
       ) : null}
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium">
-            Đã lưu
-            <span className="ml-2 font-normal text-muted-foreground">{loading ? "Đang tải…" : `${new Set(stored.map((cell) => cell.date)).size} ngày có số trong khoảng`}</span>
-          </p>
-          <Button variant="ghost" size="xs" disabled={disabled || !stored.length} onClick={() => void removeRange()}>
-            {busy === "delete" ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
-            Xoá số đã lưu trong khoảng
-          </Button>
-        </div>
-        {storedRows.length ? (
-          <div className="max-h-[32rem] overflow-auto rounded-lg border">
-            <Table className="text-xs">
-              <TableHeader className="sticky top-0 z-10 bg-muted/90 backdrop-blur [&_th]:h-9 [&_th]:px-3 [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted-foreground">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Ngày</TableHead>
-                  {market === "VND" ? <TableHead>Kênh</TableHead> : null}
-                  {columns.map((column) => (
-                    <TableHead key={column.line} className="text-right">
-                      {column.header}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody className="[&_td]:px-3 [&_td]:py-1.5">
-                {storedRows.map((row) => (
-                  <TableRow key={`${row.date}|${row.channel}`}>
-                    <TableCell className="font-medium">{toDmy(row.date)}</TableCell>
-                    {market === "VND" ? <TableCell>{row.channel ? CHANNEL_NAME[row.channel] : "Cả shop"}</TableCell> : null}
-                    {columns.map((column) => (
-                      <TableCell key={column.line} className="text-right tabular-nums">
-                        {row.values.has(column.line) ? money.format(row.values.get(column.line) as number) : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="rounded-lg border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
-            {loading ? "Đang tải…" : "Chưa có số kế toán trong khoảng ngày này. Bấm “Tải file mẫu” để bắt đầu."}
-          </p>
-        )}
+      <DailyCostGrid
+        market={market}
+        from={from}
+        to={to}
+        stored={stored}
+        loading={loading}
+        disabled={disabled}
+        saving={busy === "save"}
+        onSave={(cells) => saveCells(cells, new Set(cells.map((cell) => cell.date)).size)}
+        money={money}
+        unit={unit}
+      />
+
+      <div className="flex justify-end">
+        <Button variant="ghost" size="xs" disabled={disabled || !stored.length} onClick={() => void removeRange()}>
+          {busy === "delete" ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+          Xoá toàn bộ số đã lưu trong khoảng ngày
+        </Button>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { costShopId } from "@/lib/pancake/ph-shops";
 import { CostDbError, withDb, type Db } from "./db";
 import { SHEET_LINES, type SheetCell, type SheetChannel, type SheetLine } from "./daily-sheet";
 
@@ -35,6 +36,7 @@ function toCell(row: Record<string, unknown>): SheetCell | null {
 
 /** Every stored cell of the shop between two days (inclusive). */
 export function listDailyCosts(shopId: number, from: string, to: string, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, async (conn) => {
     const { rows } = await conn.query(
       "SELECT cost_date, channel, line_key, amount FROM daily_costs WHERE shop_id = ? AND cost_date BETWEEN ? AND ? ORDER BY cost_date, channel, line_key",
@@ -62,6 +64,7 @@ export async function listDailyCostsForReport(shopId: number, from: string, to: 
  * the shop is left alone. Importing the same file twice therefore changes nothing the second time.
  */
 export function saveDailyCosts(shopId: number, cells: SheetCell[], updatedBy: string | null, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, (conn) =>
     conn.transaction(async (tx) => {
       for (let start = 0; start < cells.length; start += CHUNK) {
@@ -81,6 +84,7 @@ export function saveDailyCosts(shopId: number, cells: SheetCell[], updatedBy: st
 
 /** Deletes every stored cell of the shop between two days. Returns how many were deleted. */
 export function deleteDailyCosts(shopId: number, from: string, to: string, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, async (conn) => {
     const { affectedRows } = await conn.query("DELETE FROM daily_costs WHERE shop_id = ? AND cost_date BETWEEN ? AND ?", [shopId, from, to]);
     return affectedRows;

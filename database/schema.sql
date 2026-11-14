@@ -200,3 +200,80 @@ CREATE TABLE IF NOT EXISTS ads_account_labels (
   CONSTRAINT chk_ads_account_labels_channel CHECK (channel IN ('', 'zalo', 'page')),
   CONSTRAINT chk_ads_account_labels_channel_vn CHECK (channel = '' OR market = 'VN')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- Số liệu theo ngày của Bảng lợi nhuận (trang /pnl)
+--   Số tự động của từng ngày (doanh số, giá vốn POS, ads, lương, chi phí ước tính…) như báo cáo tính lúc lấy, để trang
+--   không phải gọi Pancake POS mỗi lần mở. Ngày chưa có, hoặc lấy khi ngày chưa kết thúc, được lấy lại tự động; nút
+--   "Cập nhật dữ liệu POS" lấy lại cả tháng.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS pnl_days (
+  shop_id     BIGINT UNSIGNED NOT NULL COMMENT 'Mã shop trên Pancake POS',
+  report_date DATE NOT NULL,
+  currency    CHAR(3) NOT NULL COMMENT 'Tiền tệ của shop: VND hoặc PHP',
+  day_values  JSON NOT NULL COMMENT 'Các số của ngày theo khoá của lib/pnl/sheet.ts; {} = ngày không có số liệu',
+  fetched_at  DATETIME(3) NOT NULL COMMENT 'Lúc lấy từ POS, giờ UTC',
+  fetched_by  VARCHAR(190) NULL,
+
+  PRIMARY KEY (shop_id, report_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- Đơn giá chi phí theo sản phẩm của shop Philippines (xem database/migrations/2026-11-order-cost-rates.sql)
+--   Dịch vụ mua ngoài, giao hàng, chi phí khác, thuế/phí = số sản phẩm bán ra trong ngày × đơn giá (peso mỗi sản phẩm). Mỗi dòng là một bộ
+--   đơn giá có hiệu lực từ effective_date; đổi đơn giá không làm đổi các ngày trước. Chưa có dòng nào thì dùng mức mặc định.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS order_cost_rates (
+  shop_id          BIGINT UNSIGNED NOT NULL COMMENT 'Mã shop trên Pancake POS',
+  effective_date   DATE NOT NULL COMMENT 'Bộ đơn giá có hiệu lực từ ngày này',
+  outsourced       DECIMAL(18,2) NOT NULL COMMENT 'Dịch vụ mua ngoài, peso mỗi sản phẩm',
+  shipping_ped_ph  DECIMAL(18,2) NOT NULL COMMENT 'Giao hàng từ PED đến Phi, peso mỗi sản phẩm',
+  shipping_ph      DECIMAL(18,2) NOT NULL COMMENT 'Giao hàng bên Phi, peso mỗi sản phẩm',
+  other_cost       DECIMAL(18,2) NOT NULL COMMENT 'Chi phí khác, peso mỗi sản phẩm',
+  tax_fee          DECIMAL(18,2) NOT NULL COMMENT 'Thuế, phí và lệ phí, peso mỗi sản phẩm',
+  updated_by       VARCHAR(190) NULL,
+  updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (shop_id, effective_date),
+  CONSTRAINT chk_order_cost_rates_amounts CHECK (
+    outsourced >= 0 AND shipping_ped_ph >= 0 AND shipping_ph >= 0 AND other_cost >= 0 AND tax_fee >= 0
+  )
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- Giá vốn trung bình theo danh mục của shop Philippines (xem database/migrations/2026-11-category-cogs-rates.sql)
+--   Giá vốn trong ngày = số sản phẩm bán ra của từng danh mục (giày dép / đồ bộ / quần áo lẻ) × giá vốn trung bình của danh mục.
+--   Mỗi dòng là một bộ giá vốn có hiệu lực từ effective_date; đổi giá vốn không làm đổi các ngày trước.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS category_cogs_rates (
+  shop_id         BIGINT UNSIGNED NOT NULL COMMENT 'Mã shop trên Pancake POS',
+  effective_date  DATE NOT NULL COMMENT 'Bộ giá vốn có hiệu lực từ ngày này',
+  shoes           DECIMAL(18,2) NOT NULL COMMENT 'Giày dép: giá vốn trung bình, peso mỗi sản phẩm',
+  sets            DECIMAL(18,2) NOT NULL COMMENT 'Đồ bộ: giá vốn trung bình, peso mỗi sản phẩm',
+  clothes         DECIMAL(18,2) NOT NULL COMMENT 'Quần áo lẻ: giá vốn trung bình, peso mỗi sản phẩm',
+  updated_by      VARCHAR(190) NULL,
+  updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (shop_id, effective_date),
+  CONSTRAINT chk_category_cogs_rates_amounts CHECK (shoes >= 0 AND sets >= 0 AND clothes >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- Số cộng dồn của shop Philippines đã ngừng hoạt động (xem database/migrations/2026-11-ph-legacy-totals.sql)
+--   Cộng vào thẻ "Tổng cộng dồn" ở mục IV của báo cáo Phil để khớp với báo cáo của kế toán. Tối đa một dòng cho mỗi nhóm shop Phil.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS ph_legacy_totals (
+  shop_id          BIGINT UNSIGNED NOT NULL COMMENT 'Mã shop Phil chính trên Pancake POS (nhóm shop dùng chung)',
+  label            VARCHAR(190) NULL COMMENT 'Tên shop cũ, để dễ nhớ',
+  revenue          DECIMAL(18,2) NOT NULL DEFAULT 0 COMMENT 'Doanh số cộng thêm vào số tiền ở thẻ Tổng cộng dồn, peso',
+  confirmed        DECIMAL(18,2) NOT NULL DEFAULT 0 COMMENT 'Doanh số thành công, mẫu số của tỷ lệ hoàn, peso',
+  returned         DECIMAL(18,2) NOT NULL DEFAULT 0 COMMENT 'Giá trị đơn hoàn, tử số của tỷ lệ hoàn, peso',
+  orders           INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Số đơn (mẫu số của đơn hoàn/đơn)',
+  refunded         INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Số đơn hoàn',
+  note             VARCHAR(255) NULL,
+  updated_by       VARCHAR(190) NULL,
+  updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (shop_id),
+  CONSTRAINT chk_ph_legacy_totals CHECK (revenue >= 0 AND confirmed >= 0 AND returned >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

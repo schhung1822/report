@@ -1,6 +1,6 @@
 import { parseDailyRows, type DailyReportData } from "@/lib/daily-report";
 import { parseFinancialManagementSheets } from "@/lib/financial-management";
-import { parsePerformanceSheets, type CumulativePerformanceRow, type DailyPerformanceRow } from "@/lib/performance-report";
+import { parsePerformanceSheets, type CumulativePerformanceRow, type DailyPerformanceRow, type SharedPerformanceCosts } from "@/lib/performance-report";
 import { PH_DEFAULT_EXCHANGE_RATE, parsePhilippinesSheet, processPhilippinesRows } from "@/lib/philippines-report";
 import { normalizeText, readWorkbookSheets, type SheetData } from "@/lib/workbook";
 import type { RawDailyFinanceRow } from "@/types/finance";
@@ -25,7 +25,7 @@ export type SheetStatus = {
 
 export type ConsolidatedData = {
   daily: DailyReportData | null;
-  performance: { dailyRows: DailyPerformanceRow[]; cumulativeRows: CumulativePerformanceRow[]; reportDate?: string } | null;
+  performance: { dailyRows: DailyPerformanceRow[]; cumulativeRows: CumulativePerformanceRow[]; reportDate?: string; sharedCosts?: SharedPerformanceCosts } | null;
   vn: ProcessedManagementReport | null;
   /** Raw peso rows; processed on the page so the exchange rate stays editable. */
   phRows: RawDailyFinanceRow[] | null;

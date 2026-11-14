@@ -6,6 +6,9 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET);
 
+  // The external API (called by other systems) checks its own API key in the route; it has no session to look at.
+  if (pathname.startsWith("/api/external/")) return NextResponse.next();
+
   if (pathname === "/login") {
     return session ? NextResponse.redirect(new URL("/", request.url)) : NextResponse.next();
   }

@@ -106,7 +106,7 @@ export function DailyReportView({
                 ) : (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                      Chưa có khoản chi nhà cung cấp trong file dữ liệu.
+                      Chưa có khoản chi nhà cung cấp trong ngày.
                     </TableCell>
                   </TableRow>
                 )}

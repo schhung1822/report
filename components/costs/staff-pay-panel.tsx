@@ -85,7 +85,7 @@ export function StaffPayPanel({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-3xl text-xs text-muted-foreground">
-          Nhập lương cứng, thưởng và định phí mỗi tháng của từng nhân viên; lương tính theo số công chuẩn, chỉ những ngày nhân viên có đơn. Chi phí ads không nhập ở đây: lấy tự
+          Nhập lương cứng, thưởng và định phí mỗi tháng của từng nhân viên; lương tính theo số công chuẩn, chỉ những ngày nhân viên có đơn (shop Phil: lương + thưởng cả tháng chia cho từng ngày theo doanh thu, không dùng số công chuẩn). Shop Việt: nếu đã nhập “Lương & định phí tổng” (tab bên cạnh) thì lương từng nhân sự chỉ dùng cho Báo cáo hiệu suất, báo cáo quản trị lấy lương tổng chia theo doanh thu. Chi phí ads không nhập ở đây: lấy tự
           động từ Ads Meta.
         </p>
         <div className="flex flex-wrap items-center gap-2">

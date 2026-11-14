@@ -95,6 +95,23 @@ export function staffWorkedOn(dataset: PosDataset) {
   return (staffName: string, date: string) => worked.has(`${normalizeText(staffName)}|${date}`);
 }
 
+/**
+ * Philippines shop: the people are paid in dong, so the amounts of the per-staff cost lines are dong. Converts those lines to
+ * pesos with the rate of each day (`dongPerPeso`), leaving the shop-wide and per-channel lines, which are typed in pesos.
+ */
+export function staffCostsToPesos(rows: ManualCostRow[], dongPerPeso: (date: string) => number): ManualCostRow[] {
+  return rows.map((row) => {
+    if (!row.staff) return row;
+    const rate = row.date ? dongPerPeso(row.date) : 0;
+    if (!(rate > 0)) return row;
+    const converted: ManualCostRow = { ...row };
+    for (const field of COST_FIELDS) {
+      if (converted[field]) converted[field] = Math.round(((converted[field] ?? 0) / rate) * 100) / 100;
+    }
+    return converted;
+  });
+}
+
 /** Distinct staff names mentioned in the cost lines (original spelling of the first mention). */
 export function staffInCosts(rows: ManualCostRow[]) {
   const names = new Map<string, string>();

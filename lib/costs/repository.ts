@@ -1,4 +1,6 @@
+import { costShopId } from "@/lib/pancake/ph-shops";
 import { CostDbError, withDb, type Db } from "./db";
+import { applyShopPlanToList, planShopPay, ShopPayConflict, type ShopPayItem } from "./shop-pay";
 import { applyPlanToList, planStaffCost, StaffCostConflict, type StaffCostItem } from "./staff";
 import type { CostEntry, CostEntryInput } from "./types";
 
@@ -86,6 +88,7 @@ async function insertEntry(conn: Db, input: CostEntryInput, createdBy: string | 
 const run = withDb;
 
 export function listEntries(shopId: number, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, async (conn) => {
     const { rows } = await conn.query(
       `SELECT ${await columnsOf(conn)} FROM cost_entries WHERE shop_id = ? ORDER BY valid_from DESC, id DESC`,
@@ -97,6 +100,7 @@ export function listEntries(shopId: number, db?: Db) {
 
 /** Entries whose validity window overlaps `from`..`to` (a NULL `valid_to` never ends). */
 export function listEntriesInRange(shopId: number, from: string, to: string, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, async (conn) => {
     const { rows } = await conn.query(
       `SELECT ${await columnsOf(conn)} FROM cost_entries
@@ -114,6 +118,7 @@ async function findEntry(conn: Db, id: number, shopId: number) {
 }
 
 export function createEntry(input: CostEntryInput, createdBy: string | null, db?: Db) {
+  input = { ...input, shopId: costShopId(input.shopId) };
   return run(db, async (conn) => {
     const insertId = await insertEntry(conn, input, createdBy);
     const created = await findEntry(conn, insertId, input.shopId);
@@ -124,6 +129,7 @@ export function createEntry(input: CostEntryInput, createdBy: string | null, db?
 
 /** Updates an entry of the same shop. Returns null when it does not exist. */
 export function updateEntry(id: number, input: CostEntryInput, db?: Db) {
+  input = { ...input, shopId: costShopId(input.shopId) };
   return run(db, async (conn) => {
     const withWorkDays = await requireWorkDaysColumn(conn, input.workDays !== null);
     await conn.query(
@@ -140,10 +146,40 @@ export function updateEntry(id: number, input: CostEntryInput, db?: Db) {
 
 /** Deletes an entry of the given shop. Returns false when it does not exist. */
 export function deleteEntry(id: number, shopId: number, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, async (conn) => {
     const { affectedRows } = await conn.query("DELETE FROM cost_entries WHERE id = ? AND shop_id = ?", [id, shopId]);
     return affectedRows > 0;
   });
+}
+
+/** Makes each item the shop's monthly total (salary, fixed cost, other fixed cost) of that type from `validFrom` (see shop-pay.ts), all in one transaction. Returns how many changed. */
+export function applyShopPay(shopId: number, validFrom: string, items: ShopPayItem[], createdBy: string | null, db?: Db) {
+  shopId = costShopId(shopId);
+  return run(db, (conn) =>
+    conn.transaction(async (tx) => {
+      const { rows } = await tx.query(`SELECT ${await columnsOf(tx)} FROM cost_entries WHERE shop_id = ? AND scope = 'shop'`, [shopId]);
+      let list = rows.map(toCostEntry);
+      let changed = 0;
+      for (const item of items) {
+        let plan;
+        try {
+          plan = planShopPay(list, shopId, item, validFrom);
+        } catch (error) {
+          if (error instanceof ShopPayConflict) throw new CostDbError(error.message, 409);
+          throw error;
+        }
+        for (const closing of plan.close) await tx.query("UPDATE cost_entries SET valid_to = ? WHERE id = ? AND shop_id = ?", [closing.validTo, closing.id, shopId]);
+        if (plan.update) await tx.query("UPDATE cost_entries SET amount = ? WHERE id = ? AND shop_id = ?", [plan.update.amount, plan.update.id, shopId]);
+        if (plan.remove !== null) await tx.query("DELETE FROM cost_entries WHERE id = ? AND shop_id = ?", [plan.remove, shopId]);
+        let newId: number | null = null;
+        if (plan.insert) newId = await insertEntry(tx, plan.insert, createdBy);
+        if (plan.close.length || plan.update || plan.remove !== null || plan.insert) changed += 1;
+        list = applyShopPlanToList(list, plan, newId);
+      }
+      return changed;
+    }),
+  );
 }
 
 /**
@@ -152,6 +188,7 @@ export function deleteEntry(id: number, shopId: number, db?: Db) {
  * A request the history cannot represent safely fails with a 409 CostDbError.
  */
 export function applyStaffCosts(shopId: number, validFrom: string, items: StaffCostItem[], createdBy: string | null, db?: Db) {
+  shopId = costShopId(shopId);
   return run(db, (conn) =>
     conn.transaction(async (tx) => {
       const withWorkDays = await requireWorkDaysColumn(tx, items.some((item) => item.workDays !== null));

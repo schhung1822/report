@@ -7,6 +7,7 @@ import { cellClass, ReportSection, signedTextClass, StatCard, TableFrame, tableH
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { rangeLabel } from "@/lib/pancake/dates";
+import { mergeReconciliations } from "@/lib/pancake/merge-ph";
 import { groupRows, RECONCILE_WINDOWS, reconcileSummary, type CumulativeReconciliation, type ReconcileWindow } from "@/lib/pancake/status";
 import { cn } from "@/lib/utils";
 import { formatPeso, formatVnd } from "@/utils/finance";
@@ -32,7 +33,7 @@ export function CumulativeReconciliationSection({
   rate,
 }: {
   index: string;
-  shopId: number;
+  shopId: number | number[];
   /** The last day of the report: the last day of every window. */
   to: string;
   currency: "VND" | "PHP";
@@ -42,28 +43,32 @@ export function CumulativeReconciliationSection({
   const [windowDays, setWindowDays] = useState<ReconcileWindow>(30);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const inFlight = useRef(new Set<string>());
-  const key = `${shopId}|${to}|${windowDays}`;
+  // Several shops (the merged Philippines report): each is read on its own and the answers are added up.
+  const shopKey = Array.isArray(shopId) ? shopId.join(",") : String(shopId);
+  const key = `${shopKey}|${to}|${windowDays}`;
   const entry = entries[key];
 
   useEffect(() => {
     if (entries[key] || inFlight.current.has(key)) return;
     inFlight.current.add(key);
-    fetch("/api/pancake/reconcile", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, to, windowDays, rate }),
-    })
-      .then(async (response) => {
+    const readShop = (id: number) =>
+      fetch("/api/pancake/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: id, to, windowDays, rate }),
+      }).then(async (response) => {
         const body = (await response.json().catch(() => null)) as (CumulativeReconciliation & { error?: string }) | null;
         if (!response.ok || !body) throw new Error(body?.error ?? "Không đối soát được từ Pancake POS.");
         return body;
-      })
+      });
+    Promise.all(shopKey.split(",").map((id) => readShop(Number(id))))
+      .then((list) => (list.length > 1 ? mergeReconciliations(list) : list[0]))
       .then((data) => setEntries((previous) => ({ ...previous, [key]: { data } })))
       .catch((error: unknown) =>
         setEntries((previous) => ({ ...previous, [key]: { error: error instanceof Error ? error.message : "Không đối soát được từ Pancake POS." } })),
       )
       .finally(() => inFlight.current.delete(key));
-  }, [entries, key, shopId, to, windowDays, rate]);
+  }, [entries, key, shopKey, to, windowDays, rate]);
 
   function retry() {
     setEntries((previous) => {
@@ -111,8 +116,10 @@ export function CumulativeReconciliationSection({
 }
 
 export function ReconciliationBody({ data, currency, rate }: { data: CumulativeReconciliation; currency: "VND" | "PHP"; rate?: number }) {
-  const summary = reconcileSummary(data.rows);
-  const groups = groupRows(data.rows);
+  // The Philippines report counts the COD of the orders as sales (without the prepaid part), so its values are the COD column.
+  const rows = currency === "PHP" ? data.rows.map((row) => ({ ...row, amount: row.cod })) : data.rows;
+  const summary = reconcileSummary(rows);
+  const groups = groupRows(rows);
   const decided = summary.received.orders + summary.returned.orders;
   const toVnd = (amount: number) => (currency === "PHP" ? amount * (rate ?? 0) : amount);
   // "+ 0" turns a negative zero (an empty group taken off a total) into a plain 0.
@@ -142,7 +149,7 @@ export function ReconciliationBody({ data, currency, rate }: { data: CumulativeR
           helper={`Giá trị ${main(summary.all.amount)}${currency === "PHP" ? ` ${sub(summary.all.amount)}` : ""}`}
         />
         <StatCard
-          label="Doanh thu sau huỷ"
+          label="Doanh thu sau huỷ, bỏ đơn mới"
           value={main(summary.estimated.amount)}
           helper={withSub(summary.estimated.amount, `${countFormatter.format(summary.estimated.orders)} đơn`)}
         />
@@ -212,10 +219,22 @@ export function ReconciliationBody({ data, currency, rate }: { data: CumulativeR
           <TableBody>
             <Line label="Giá trị đơn trên POS" orders={summary.all.orders} amount={summary.all.amount} main={main} sub={sub} />
             <Line label="− Đơn huỷ" orders={summary.canceled.orders} amount={-summary.canceled.amount} main={main} sub={sub} negative />
-            <Line label="= Đơn không huỷ" orders={summary.estimated.orders} amount={summary.estimated.amount} main={main} sub={sub} strong />
+            <Line label="− Đơn mới (chưa xác nhận)" orders={summary.newOrders.orders} amount={-summary.newOrders.amount} main={main} sub={sub} negative />
+            <Line label="= Đơn không huỷ, không phải đơn mới" orders={summary.estimated.orders} amount={summary.estimated.amount} main={main} sub={sub} strong />
             <Line label="− Đơn hoàn" orders={summary.returned.orders} amount={-summary.returned.amount} main={main} sub={sub} negative />
-            <Line label="= Đơn không huỷ, không hoàn" orders={summary.actual.orders} amount={summary.actual.amount} main={main} sub={sub} strong shaded />
+            <Line label="= Đơn tính doanh thu (không huỷ, không mới, không hoàn)" orders={summary.actual.orders} amount={summary.actual.amount} main={main} sub={sub} strong shaded />
             <Line label="– Đã nhận hàng" orders={summary.received.orders} amount={summary.received.amount} main={main} sub={sub} indent />
+            {data.unreconciled ? (
+              <Line
+                label="↳ Trong đó chưa đối soát với đơn vị vận chuyển (COD)"
+                orders={data.unreconciled.orders}
+                amount={data.unreconciled.cod}
+                main={main}
+                sub={sub}
+                indent
+                warn={data.unreconciled.orders > 0}
+              />
+            ) : null}
             <Line label="– Đang giao" orders={summary.shipping.orders} amount={summary.shipping.amount} main={main} sub={sub} indent />
             <Line label="– Chờ xử lý / chờ giao" orders={summary.waiting.orders} amount={summary.waiting.amount} main={main} sub={sub} indent />
           </TableBody>
@@ -226,8 +245,34 @@ export function ReconciliationBody({ data, currency, rate }: { data: CumulativeR
         <li>
           Tỷ lệ huỷ <strong className="text-foreground">{percent(summary.canceledRate)}</strong> số đơn · còn <strong className="text-foreground">{percent(summary.openRate)}</strong> đơn chưa giao xong (chờ xử lý + đang giao).
         </li>
-        <li>Giá trị là số trên bộ lọc đơn của POS (COD + chuyển khoản trước). Đơn hoàn một phần được tính cả giá trị đơn vào “Hoàn”.</li>
-        <li>Lợi nhuận theo ngày trừ giá vốn, vận chuyển và chi phí đã lưu trên MySQL (lương, định phí, ads Meta); chi phí nạp từ file trên trang không được tính ở mục này.</li>
+        {data.unreconciled ? (
+          <li>
+            “Chưa đối soát” là các đơn đã nhận trong mốc này còn thẻ <strong className="text-foreground">{currency === "PHP" ? "Unreconciled" : "Chưa đối soát"}</strong> trên POS: đơn vị vận chuyển chưa trả COD cho shop. Đây là
+            số dư còn nợ tại thời điểm xem, tính theo COD của đơn.
+          </li>
+        ) : null}
+        <li>
+          {currency === "PHP"
+            ? "Giá trị là COD của đơn (ô “COD” cuối bảng đơn của POS), không gồm phần khách trả trước."
+            : "Giá trị là số trên bộ lọc đơn của POS (COD + chuyển khoản trước)."}{" "}
+          Đơn hoàn một phần được tính cả giá trị đơn vào “Hoàn”.
+        </li>
+        <li>
+          Lợi nhuận theo ngày trừ giá vốn, vận chuyển và chi phí đã lưu trên MySQL (lương, định phí, ads Meta, chi phí nhập ở trang Bảng lợi nhuận / Chi phí cố định); chi phí nạp từ file
+          trên trang không được tính ở mục này.
+          {data.dailySource ? (
+            <>
+              {" "}
+              Doanh thu và lợi nhuận <strong className="text-foreground">{data.dailySource.sheet} ngày</strong> lấy từ Bảng lợi nhuận (số đã lưu)
+              {data.dailySource.pos ? (
+                <>
+                  , <strong className="text-foreground">{data.dailySource.pos} ngày</strong> chưa có ở đó nên lấy từ POS
+                </>
+              ) : null}
+              . Bảng trạng thái đơn luôn lấy mới từ POS.
+            </>
+          ) : null}
+        </li>
         {currency === "PHP" ? <li>Quy đổi VNĐ theo tỷ giá 1 ₱ = {countFormatter.format(rate ?? 0)} ₫ (ngày cuối của kỳ).</li> : null}
         {data.includesToday ? <li className="text-amber-700">Mốc này gồm hôm nay nên đơn mới vẫn đang thay đổi trạng thái.</li> : null}
         {data.warnings.map((warning) => (
@@ -272,6 +317,7 @@ function Line({
   shaded = false,
   negative = false,
   indent = false,
+  warn = false,
 }: {
   label: ReactNode;
   orders: number;
@@ -282,12 +328,14 @@ function Line({
   shaded?: boolean;
   negative?: boolean;
   indent?: boolean;
+  /** Something to chase (money still owed): amber instead of grey. */
+  warn?: boolean;
 }) {
   return (
     <TableRow className={cn("break-inside-avoid hover:bg-transparent", shaded && "bg-muted/40")}>
-      <TableCell className={cn(cellClass, strong && "font-semibold", indent && "pl-8 text-muted-foreground")}>{label}</TableCell>
-      <TableCell className={cn(cellClass, "text-right tabular-nums", indent && "text-muted-foreground")}>{countFormatter.format(orders)}</TableCell>
-      <Amount value={amount} main={main} sub={sub} strong={strong} className={cn(negative && signedTextClass(-1), indent && "text-muted-foreground")} />
+      <TableCell className={cn(cellClass, strong && "font-semibold", indent && "pl-8 text-muted-foreground", warn && "text-amber-700")}>{label}</TableCell>
+      <TableCell className={cn(cellClass, "text-right tabular-nums", indent && "text-muted-foreground", warn && "text-amber-700")}>{countFormatter.format(orders)}</TableCell>
+      <Amount value={amount} main={main} sub={sub} strong={strong} className={cn(negative && signedTextClass(-1), indent && "text-muted-foreground", warn && "text-amber-700")} />
     </TableRow>
   );
 }

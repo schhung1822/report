@@ -5,6 +5,7 @@
 const LARK_BASE_URL = (process.env.LARK_BASE_URL?.trim() || "https://open.larksuite.com").replace(/\/+$/, "");
 const REQUEST_TIMEOUT_MS = 30_000;
 export const LARK_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const LARK_MAX_FILE_BYTES = 30 * 1024 * 1024;
 
 export class LarkError extends Error {
   constructor(
@@ -40,10 +41,10 @@ const ERROR_MESSAGES: Record<number, string> = {
   230034: "LARK_CHAT_ID không hợp lệ.",
   230035: "Bot không có quyền gửi tin vào nhóm này (ví dụ nhóm đang tắt quyền gửi tin).",
   232009: "Nhóm Lark đã bị giải tán.",
-  234006: "Ảnh vượt quá 10 MB, Lark không nhận.",
+  234006: "Tệp vượt quá giới hạn dung lượng của Lark (ảnh 10 MB, file 30 MB).",
   234007: "Ứng dụng Lark chưa bật tính năng Bot.",
-  234010: "File ảnh rỗng.",
-  234011: "Định dạng ảnh không được Lark hỗ trợ.",
+  234010: "Tệp gửi lên bị rỗng.",
+  234011: "Định dạng tệp không được Lark hỗ trợ.",
   234039: "Độ phân giải ảnh vượt giới hạn của Lark.",
 };
 
@@ -104,6 +105,24 @@ async function authed<T>(config: LarkConfig, step: string, build: (token: string
   throw new LarkError("Không xác thực được với Lark.", 502);
 }
 
+/** Posts an already-uploaded image/file to the configured group. Returns the new message id. */
+async function postMessage(config: LarkConfig, msgType: "image" | "file", content: object, uuid: string) {
+  const sent = await authed<{ message_id: string }>(config, "gửi tin nhắn", (token) => ({
+    url: `${LARK_BASE_URL}/open-apis/im/v1/messages?receive_id_type=chat_id`,
+    init: {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        receive_id: config.chatId,
+        msg_type: msgType,
+        content: JSON.stringify(content),
+        uuid,
+      }),
+    },
+  }));
+  return sent.data?.message_id ?? null;
+}
+
 /** Uploads the image and posts it to the configured group. Returns the new message id. */
 export async function sendImageToChat(config: LarkConfig, image: Blob, filename: string, uuid: string) {
   const upload = await authed<{ image_key: string }>(config, "tải ảnh lên", (token) => {
@@ -117,19 +136,22 @@ export async function sendImageToChat(config: LarkConfig, image: Blob, filename:
   });
   const imageKey = upload.data?.image_key;
   if (!imageKey) throw new LarkError("Lark không trả về image_key sau khi tải ảnh lên.", 502);
+  return postMessage(config, "image", { image_key: imageKey }, uuid);
+}
 
-  const sent = await authed<{ message_id: string }>(config, "gửi tin nhắn", (token) => ({
-    url: `${LARK_BASE_URL}/open-apis/im/v1/messages?receive_id_type=chat_id`,
-    init: {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({
-        receive_id: config.chatId,
-        msg_type: "image",
-        content: JSON.stringify({ image_key: imageKey }),
-        uuid,
-      }),
-    },
-  }));
-  return sent.data?.message_id ?? null;
+/** Uploads the PDF as a file and posts it to the configured group. Returns the new message id. */
+export async function sendPdfToChat(config: LarkConfig, pdf: Blob, filename: string, uuid: string) {
+  const upload = await authed<{ file_key: string }>(config, "tải file lên", (token) => {
+    const form = new FormData();
+    form.append("file_type", "pdf");
+    form.append("file_name", filename);
+    form.append("file", pdf, filename);
+    return {
+      url: `${LARK_BASE_URL}/open-apis/im/v1/files`,
+      init: { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form },
+    };
+  });
+  const fileKey = upload.data?.file_key;
+  if (!fileKey) throw new LarkError("Lark không trả về file_key sau khi tải file lên.", 502);
+  return postMessage(config, "file", { file_key: fileKey }, uuid);
 }

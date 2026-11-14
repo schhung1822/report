@@ -1,6 +1,8 @@
 import { getSessionUser } from "@/lib/auth";
 import { CostDbError } from "@/lib/costs/db";
 import { deleteEntry, updateEntry } from "@/lib/costs/repository";
+import { addDays, monthStart } from "@/lib/pancake/dates";
+import { invalidatePnlDays } from "@/lib/pnl/repository";
 import { validateCostEntryInput } from "@/lib/costs/validate";
 
 function fail(message: string, status: number) {
@@ -28,6 +30,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   try {
     const entry = await updateEntry(id, parsed.value);
+    // The old start date is not known here, so the previous month is read again as well.
+    if (entry) await invalidatePnlDays(parsed.value.shopId, monthStart(addDays(parsed.value.validFrom, -31)));
     return entry ? Response.json({ entry }) : fail("Không tìm thấy khoản chi phí này.", 404);
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);
@@ -43,7 +47,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!Number.isSafeInteger(shopId) || shopId <= 0) return fail("Mã shop không hợp lệ.", 400);
 
   try {
-    return (await deleteEntry(id, shopId)) ? Response.json({ ok: true }) : fail("Không tìm thấy khoản chi phí này.", 404);
+    if (!(await deleteEntry(id, shopId))) return fail("Không tìm thấy khoản chi phí này.", 404);
+    // The deleted entry's dates are gone: read the days of the last two months again.
+    await invalidatePnlDays(shopId, monthStart(addDays(new Date().toISOString().slice(0, 10), -31)));
+    return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof CostDbError) return fail(error.message, error.status);
     return fail("Không thể xóa khoản chi phí.", 500);

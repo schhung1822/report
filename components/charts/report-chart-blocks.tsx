@@ -9,7 +9,7 @@ import {
   ShareRingChart,
 } from "@/components/charts/report-charts"
 import { groupExpenses, type DailyReportData } from "@/lib/daily-report"
-import type { DailyPerformanceRow } from "@/lib/performance-report"
+import type { DailyPerformanceRow, SharedPerformanceCosts } from "@/lib/performance-report"
 import type { ChannelMetricsSet, ProcessedManagementReport } from "@/types/financial-management"
 import type { ProcessedMonthlyFinanceReport } from "@/types/finance"
 
@@ -18,7 +18,7 @@ const OTHER = "Khác"
 
 // ------------------------------------------------------------------------------------------ performance (per staff)
 
-export function PerformanceCharts({ dailyRows }: { dailyRows: DailyPerformanceRow[] }) {
+export function PerformanceCharts({ dailyRows, sharedCosts }: { dailyRows: DailyPerformanceRow[]; sharedCosts?: SharedPerformanceCosts }) {
   if (!dailyRows.length) return null
   const cost = (pick: (row: DailyPerformanceRow) => number) => Math.max(0, sum(dailyRows.map(pick)))
   return (
@@ -47,7 +47,7 @@ export function PerformanceCharts({ dailyRows }: { dailyRows: DailyPerformanceRo
           { id: "cogs", label: "Giá vốn" },
           { id: "shipping", label: "Vận chuyển" },
           { id: "salary", label: "Lương" },
-          { id: "fixed", label: "Chi phí cố định" },
+          { id: "fixed", label: "Định phí" },
           { id: "ads", label: "Quảng cáo" },
         ]}
         periods={[
@@ -57,8 +57,9 @@ export function PerformanceCharts({ dailyRows }: { dailyRows: DailyPerformanceRo
             values: {
               cogs: cost((row) => row.cogs),
               shipping: cost((row) => row.shipping),
-              salary: cost((row) => row.salary),
-              fixed: cost((row) => row.fixedCost),
+              // The shop's own salary and fixed-cost totals belong to no staff member's row, so they are added here.
+              salary: cost((row) => row.salary) + (sharedCosts?.salary ?? 0),
+              fixed: cost((row) => row.fixedCost) + (sharedCosts?.fixedCost ?? 0),
               ads: cost((row) => row.ads),
             },
           },

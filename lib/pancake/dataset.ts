@@ -5,7 +5,7 @@
  * Every row carries four views of the same metrics:
  *  - created   : orders created in the period (Pancake `result` bucket)
  *  - confirmed : orders confirmed in the period (`success` bucket); includes goods that were later returned
- *  - returned  : orders returned in the period (`returned` bucket)
+ *  - returned  : orders created in the period that were returned later (`returned` bucket, by creation day like the others)
  *  - net       : confirmed - returned (order totals `totalOrderCount` follow `created`)
  */
 import { listDays } from "./dates";
@@ -291,9 +291,9 @@ export function buildDataset(input: DatasetInput): PosDataset {
     },
     fetchedAt: input.fetchedAt,
     definitions: {
-      created: "Đơn tạo trong kỳ (Pancake bucket result)",
+      created: "Đơn tạo trong kỳ, không gồm đơn mới và đơn huỷ (Pancake bucket result)",
       confirmed: "Đơn chốt trong kỳ (bucket success), đã gồm hàng sau đó bị hoàn",
-      returned: "Đơn hoàn trong kỳ (bucket returned)",
+      returned: "Đơn tạo trong kỳ đã bị hoàn (bucket returned, tính vào ngày tạo đơn)",
       net: "Chốt − hoàn; totalOrderCount lấy theo đơn tạo",
     },
     totals,

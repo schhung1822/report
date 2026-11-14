@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { Textarea } from "@/components/ui/textarea";
 import { settleChartAnimations } from "@/hooks/use-chart-motion";
-import { sendReportToLark } from "@/lib/report-export";
+import { larkSentMessage, sendReportToLark, type LarkFormat } from "@/lib/report-export";
 import {
   CumulativeVarianceTable,
   DailyBreakdownTable,
@@ -255,12 +255,12 @@ export default function FinancialManagementReportGenerator() {
     });
   }
 
-  async function sendToLark() {
+  async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`);
-      setNotice({ type: "success", message: "Đã gửi ảnh báo cáo tới nhóm Lark." });
+      await sendReportToLark(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`, { format });
+      setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi ảnh tới Lark." });
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
     }
   }
 

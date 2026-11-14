@@ -9,11 +9,12 @@
  */
 import { round2, type PosDataset } from "./dataset"
 
-export type StatusGroup = "waiting" | "shipping" | "done" | "returned" | "canceled"
+export type StatusGroup = "new" | "waiting" | "shipping" | "done" | "returned" | "canceled"
 
 /** In the order the report lists them: from not shipped yet to lost. */
 export const STATUS_GROUPS: { id: StatusGroup; label: string; hint: string }[] = [
-  { id: "waiting", label: "Chờ xử lý / chờ giao", hint: "Mới, đã xác nhận, đang đóng hàng, chờ hàng" },
+  { id: "new", label: "Đơn mới", hint: "Chưa xác nhận, không tính vào doanh thu" },
+  { id: "waiting", label: "Chờ xử lý / chờ giao", hint: "Đã xác nhận, đang đóng hàng, chờ chuyển hàng, chờ hàng" },
   { id: "shipping", label: "Đang giao", hint: "Đã gửi cho đơn vị vận chuyển" },
   { id: "done", label: "Đã nhận", hint: "Khách đã nhận hàng" },
   { id: "returned", label: "Hoàn", hint: "Đang hoàn, đã hoàn, hoàn một phần" },
@@ -21,7 +22,7 @@ export const STATUS_GROUPS: { id: StatusGroup; label: string; hint: string }[] =
 ]
 
 const STATUS_INFO: Record<string, { label: string; group: StatusGroup }> = {
-  "0": { label: "Đơn mới", group: "waiting" },
+  "0": { label: "Đơn mới", group: "new" },
   "1": { label: "Đã xác nhận", group: "waiting" },
   "8": { label: "Đang đóng hàng", group: "waiting" },
   "9": { label: "Chờ chuyển hàng", group: "waiting" },
@@ -37,6 +38,8 @@ const STATUS_INFO: Record<string, { label: string; group: StatusGroup }> = {
   "7": { label: "Đã xoá", group: "canceled" },
 }
 
+/** A new order is not confirmed yet: like a canceled one it is left out of every revenue figure (the statistics are asked to exclude it). */
+export const NEW_STATUS = "0"
 const CANCELED_STATUS = "6"
 /** The POS order filter hides removed orders. */
 export const REMOVED_STATUS = "7"
@@ -68,7 +71,7 @@ export function statusRows(dataset: Pick<PosDataset, "statuses">): StatusRow[] {
     .map(({ status, facts, pos }): StatusRow => {
       const { label, group } = statusInfo(status)
       const { created } = facts
-      const countsAsRevenue = status !== CANCELED_STATUS && status !== REMOVED_STATUS
+      const countsAsRevenue = status !== NEW_STATUS && status !== CANCELED_STATUS && status !== REMOVED_STATUS
       // Without the POS figure (removed orders, an older report, a failed read) the statistics numbers stand in.
       return {
         status,
@@ -90,7 +93,9 @@ export type StatusBridge = {
   /** Every order the POS order filter lists (all statuses but removed). */
   pos: { orders: number; amount: number }
   canceled: { orders: number; amount: number }
-  /** The orders that are not canceled: their POS value, and the part of it that is in the revenue. */
+  /** New orders (not confirmed yet): left out of the revenue like the canceled ones. */
+  newOrders: { orders: number; amount: number }
+  /** The orders that are neither canceled nor new: their POS value, and the part of it that is in the revenue. */
   remaining: { orders: number; amount: number; counted: number }
   /** Orders that are removed on the POS (the filter hides them). */
   removedOrders: number
@@ -118,11 +123,13 @@ export function statusBridge(dataset: PosDataset): StatusBridge | null {
     )
   const pos = sum((row) => row.status !== REMOVED_STATUS)
   const canceled = sum((row) => row.status === CANCELED_STATUS)
+  const newOrders = sum((row) => row.status === NEW_STATUS)
   const remaining = sum((row) => row.countsAsRevenue)
   const { created, net } = dataset.totals
   return {
     pos: { orders: pos.orders, amount: pos.amount },
     canceled: { orders: canceled.orders, amount: canceled.amount },
+    newOrders: { orders: newOrders.orders, amount: newOrders.amount },
     remaining,
     removedOrders: sum((row) => row.status === REMOVED_STATUS).orders,
     returnedAdjustment: round2(remaining.amount - remaining.counted),
@@ -148,6 +155,14 @@ export type CumulativeReconciliation = {
   rows: StatusRow[]
   /** Revenue and profit of each day of the window with orders or costs, in dong (pesos converted at each day's rate). */
   daily: { date: string; revenue: number; profit: number }[]
+  /**
+   * Orders of the window the customer has received (status "Đã nhận") whose COD the shipping partner has not been reconciled with
+   * the shop yet: the order carries the POS tag "Unreconciled" (Philippines) / "Chưa đối soát" (Vietnam). `cod` is their cash
+   * on delivery. Undefined when the tags could not be read.
+   */
+  unreconciled?: { orders: number; cod: number }
+  /** How many of those days come from the profit sheet (figures kept in MySQL plus its typed costs) and how many from the POS. */
+  dailySource?: { sheet: number; pos: number }
   warnings: string[]
 }
 
@@ -155,7 +170,9 @@ export type ReconcileSummary = {
   /** Every order the POS order filter lists. */
   all: { orders: number; amount: number }
   canceled: { orders: number; amount: number }
-  /** Orders created and not canceled: what the window was expected to bring in. */
+  /** New orders (not confirmed yet): not counted, like the canceled ones. */
+  newOrders: { orders: number; amount: number }
+  /** Orders created that are neither canceled nor new: what the window was expected to bring in. */
   estimated: { orders: number; amount: number }
   /** The returned part of `estimated`. */
   returned: { orders: number; amount: number }
@@ -179,14 +196,15 @@ export function reconcileSummary(rows: StatusRow[]): ReconcileSummary {
     const group = groups.find((item) => item.group === id)
     return { orders: group?.orders ?? 0, amount: group?.amount ?? 0 }
   }
-  const [waiting, shipping, received, returned, canceled] = (["waiting", "shipping", "done", "returned", "canceled"] as const).map(of)
+  const [waiting, shipping, received, returned, canceled, fresh] = (["waiting", "shipping", "done", "returned", "canceled", "new"] as const).map(of)
   const all = { orders: groups.reduce((acc, group) => acc + group.orders, 0), amount: round2(groups.reduce((acc, group) => acc + group.amount, 0)) }
-  const estimated = { orders: all.orders - canceled.orders, amount: round2(all.amount - canceled.amount) }
+  const estimated = { orders: all.orders - canceled.orders - fresh.orders, amount: round2(all.amount - canceled.amount - fresh.amount) }
   const actual = { orders: estimated.orders - returned.orders, amount: round2(estimated.amount - returned.amount) }
   const decided = received.orders + returned.orders
   return {
     all,
     canceled,
+    newOrders: fresh,
     estimated,
     returned,
     actual,
