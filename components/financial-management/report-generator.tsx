@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { settleChartAnimations } from "@/hooks/use-chart-motion";
 import { larkSentMessage, saveReportAsPdf, sendReportToLark, type LarkFormat } from "@/lib/report-export";
 import { reportFileName } from "@/lib/report-filename";
+import { rangeLabel } from "@/lib/pancake/dates";
 import {
   CumulativeVarianceTable,
   DailyBreakdownTable,
@@ -183,6 +184,8 @@ function waitForPaint() {
 export default function FinancialManagementReportGenerator() {
   const reportRef = useRef<HTMLDivElement>(null);
   const [report, setReport] = useState(SAMPLE_REPORT);
+  // "dd/mm/yyyy" (– "dd/mm/yyyy") picked in the Pancake POS card when the report on screen came from there, for the file name.
+  const [posDateLabel, setPosDateLabel] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
@@ -199,6 +202,7 @@ export default function FinancialManagementReportGenerator() {
     try {
       const parsed = await parseFinancialManagementFile(file);
       setReport(parsed);
+      setPosDateLabel(null);
       setFileName(file.name);
       setNotice({
         type: parsed.warnings.length ? "warning" : "success",
@@ -216,6 +220,7 @@ export default function FinancialManagementReportGenerator() {
 
   function resetSample() {
     setReport(SAMPLE_REPORT);
+    setPosDateLabel(null);
     setFileName("");
     setNotice({ type: "success", message: "Đã khôi phục dữ liệu mẫu." });
   }
@@ -254,7 +259,7 @@ export default function FinancialManagementReportGenerator() {
 
   async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, reportFileName("vn", report.summary.dateRangeLabel, "png"), { format });
+      await sendReportToLark(reportRef.current, reportFileName("vn", posDateLabel ?? report.summary.dateRangeLabel, "png"), { format });
       setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
@@ -267,7 +272,7 @@ export default function FinancialManagementReportGenerator() {
       const dataUrl = await renderReport();
       triggerDownload(
         dataUrl,
-        reportFileName("vn", report.summary.dateRangeLabel, "png"),
+        reportFileName("vn", posDateLabel ?? report.summary.dateRangeLabel, "png"),
       );
       setNotice({
         type: "success",
@@ -283,7 +288,7 @@ export default function FinancialManagementReportGenerator() {
   async function exportPdf() {
     setExporting("pdf");
     try {
-      await saveReportAsPdf(reportRef.current, reportFileName("vn", report.summary.dateRangeLabel, "pdf"), { format: "a3" });
+      await saveReportAsPdf(reportRef.current, reportFileName("vn", posDateLabel ?? report.summary.dateRangeLabel, "pdf"), { format: "a3" });
       setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });
@@ -313,12 +318,13 @@ export default function FinancialManagementReportGenerator() {
           <PancakeSyncCard
             currencies={["VND"]}
             hint="Tự lấy doanh thu, giá vốn và top sản phẩm theo kênh Zalo / Page (dự tính & thực tế) từ shop Việt Nam. Lương, định phí, ads, dự phòng hoàn theo kênh nhập ở trang Chi phí cố định."
-            onSynced={({ vn }) => {
+            onSynced={({ vn, range }) => {
               if (!vn) {
                 setNotice({ type: "warning", message: "Pancake POS chưa có dữ liệu để tạo báo cáo quản trị." });
                 return;
               }
               setReport(vn);
+              setPosDateLabel(rangeLabel(range.from, range.to));
               setFileName("");
             }}
           />

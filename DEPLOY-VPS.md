@@ -63,6 +63,10 @@ server {
     listen 80;
     server_name report.activate.vn;
 
+    # bắt buộc: nút "Gửi Lark" tải ảnh/PDF báo cáo (thường 1-5 MB, tối đa 30 MB) lên app.
+    # Mặc định nginx chỉ nhận 1 MB nên báo cáo Hiệu suất / Việt / Phil bị chặn (lỗi 413).
+    client_max_body_size 40m;
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;

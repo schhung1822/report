@@ -7,6 +7,7 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
 import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import type { PancakeSyncResult } from "@/lib/pancake/types";
+import { rangeLabel } from "@/lib/pancake/dates";
 import { mergeablePhResults, mergeOpenOrders, mergePhRows, mergePreviousDay, mergeRefundTrend } from "@/lib/pancake/merge-ph";
 import { DailyManualEntry } from "@/components/daily/daily-manual-entry";
 import { DailyReportView } from "@/components/reports/daily-report-view";
@@ -216,14 +217,27 @@ export function ConsolidatedReport() {
     URL.revokeObjectURL(url);
   }
 
-  // The date in the file name is the report's own date (range). Evaluated inside event handlers only: Cache Components
-  // forbids reading the clock during render, and a label with no date falls back to today.
+  /** The Pancake POS result the tab on screen was made from, or undefined when it was read from an Excel file. */
+  const posResultOfTab = (): PancakeSyncResult | undefined => {
+    if (tab === "ph") return phMerged ? phGroup[0] : shopResults[activeShop.PHP]?.phRows ? shopResults[activeShop.PHP] : undefined;
+    const vnd = shopResults[activeShop.VND];
+    if (tab === "vn") return data?.vn?.sourceSheet === POS_SOURCE_SHEET ? vnd : undefined;
+    return vnd?.daily && vnd.performance ? vnd : undefined;
+  };
+
+  // The date in the file name is the day (range) the data was taken from Pancake POS for: the "Từ ngày – Đến ngày" picked
+  // there, not the days that happen to have orders. A report read from an Excel file uses its own date. Evaluated inside
+  // event handlers only: Cache Components forbids reading the clock during render, and a label with no date falls back to today.
   const reportDateLabel = (): string | undefined => {
+    const pos = posResultOfTab();
+    if (pos) return rangeLabel(pos.range.from, pos.range.to);
     if (tab === "daily") return data?.daily?.reportDate;
     if (tab === "performance") return data?.performance?.reportDate;
     if (tab === "vn") return data?.vn?.summary.dateRangeLabel;
     const days = phResult?.report?.days ?? [];
-    return days.length ? `${days[0].dateLabel} – ${days[days.length - 1].dateLabel}` : undefined;
+    if (!days.length) return undefined;
+    const [first, last] = [days[0].dateLabel, days[days.length - 1].dateLabel];
+    return first === last ? first : `${first} – ${last}`;
   };
   const exportName = (extension: "png" | "pdf") => reportFileName(tab, reportDateLabel(), extension);
 

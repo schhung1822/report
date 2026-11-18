@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   try {
     file = (await request.formData()).get("file");
   } catch {
-    return fail("Yêu cầu không hợp lệ.", 400);
+    // A body cut off by a size limit in front of the route (proxy / nginx) no longer parses as a form.
+    return fail("Không đọc được file gửi lên (có thể file vượt giới hạn tải lên của máy chủ).", 400);
   }
   if (!(file instanceof File) || file.size === 0) return fail("Chưa có file PDF để gửi.", 400);
   if (file.size > LARK_MAX_FILE_BYTES) return fail("File PDF vượt quá 30 MB, Lark không nhận.", 413);

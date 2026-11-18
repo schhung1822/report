@@ -24,7 +24,8 @@ export async function POST(request: Request) {
   try {
     image = (await request.formData()).get("image");
   } catch {
-    return fail("Yêu cầu không hợp lệ.", 400);
+    // A body cut off by a size limit in front of the route (proxy / nginx) no longer parses as a form.
+    return fail("Không đọc được ảnh gửi lên (có thể ảnh vượt giới hạn tải lên của máy chủ).", 400);
   }
   if (!(image instanceof File) || image.size === 0) return fail("Chưa có ảnh báo cáo để gửi.", 400);
   if (image.size > LARK_MAX_IMAGE_BYTES) return fail("Ảnh vượt quá 10 MB, Lark không nhận.", 413);
