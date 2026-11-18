@@ -13,7 +13,9 @@ import { mergeablePhResults, mergeOpenOrders, mergePhRows, mergePreviousDay, mer
 import { PancakeError } from "@/lib/pancake/mcp-client";
 import { fetchShops, syncFromPancake } from "@/lib/pancake/sync";
 import type { PancakeShop, PancakeSyncResult } from "@/lib/pancake/types";
+import { toDmy } from "@/lib/pancake/dates";
 import { PH_DEFAULT_EXCHANGE_RATE } from "@/lib/philippines-report";
+import { REPORT_FILE_PREFIX, reportFileDate } from "@/lib/report-filename";
 import { POS_SOURCE_SHEET } from "@/types/financial-management";
 
 export class ExternalJobError extends Error {
@@ -56,9 +58,9 @@ const slug = (value: string) =>
     .toLowerCase();
 
 const FILE_PREFIX: Record<ExternalReportKey, string> = {
-  performance: "bao-cao-hieu-suat",
-  vn: "bao-cao-quan-tri-viet",
-  ph: "bao-cao-quan-tri-phil",
+  performance: REPORT_FILE_PREFIX.performance,
+  vn: REPORT_FILE_PREFIX.vn,
+  ph: REPORT_FILE_PREFIX.ph,
 };
 
 /** Plans the PDFs from the shops' results: Vietnam shops give Hiệu suất and Quản trị Việt, Philippines shops (added together) Quản trị Phil. */
@@ -164,7 +166,7 @@ export async function runDailyReports({ from, to }: { from: string; to: string }
   );
 
   // 2. Plan the PDFs. Whatever cannot be made is listed with the reason.
-  const tag = from === to ? from : `${from}_${to}`;
+  const tag = from === to ? reportFileDate(toDmy(from)) : `${reportFileDate(toDmy(from))}_${reportFileDate(toDmy(to))}`;
   const outcomes: ReportOutcome[] = [];
   const jobs = planJobs(results, tag, outcomes);
   const wanted: { key: ExternalReportKey; currency: string }[] = [

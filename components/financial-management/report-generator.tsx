@@ -20,6 +20,7 @@ import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { Textarea } from "@/components/ui/textarea";
 import { settleChartAnimations } from "@/hooks/use-chart-motion";
 import { larkSentMessage, saveReportAsPdf, sendReportToLark, type LarkFormat } from "@/lib/report-export";
+import { reportFileName } from "@/lib/report-filename";
 import {
   CumulativeVarianceTable,
   DailyBreakdownTable,
@@ -164,10 +165,6 @@ function buildAnalysisData(report: ProcessedManagementReport) {
   };
 }
 
-function safeFilePart(value: string) {
-  return value.replace(/[^a-zA-Z0-9À-ỹ-]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
 function triggerDownload(href: string, filename: string) {
   const anchor = document.createElement("a");
   anchor.href = href;
@@ -257,7 +254,7 @@ export default function FinancialManagementReportGenerator() {
 
   async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`, { format });
+      await sendReportToLark(reportRef.current, reportFileName("vn", report.summary.dateRangeLabel, "png"), { format });
       setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
@@ -270,7 +267,7 @@ export default function FinancialManagementReportGenerator() {
       const dataUrl = await renderReport();
       triggerDownload(
         dataUrl,
-        `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.png`,
+        reportFileName("vn", report.summary.dateRangeLabel, "png"),
       );
       setNotice({
         type: "success",
@@ -286,7 +283,7 @@ export default function FinancialManagementReportGenerator() {
   async function exportPdf() {
     setExporting("pdf");
     try {
-      await saveReportAsPdf(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.pdf`, { format: "a3" });
+      await saveReportAsPdf(reportRef.current, reportFileName("vn", report.summary.dateRangeLabel, "pdf"), { format: "a3" });
       setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });

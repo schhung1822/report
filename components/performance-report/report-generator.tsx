@@ -21,12 +21,12 @@ import { SendToLarkButton } from "@/components/send-to-lark-button";
 import {
   larkSentMessage,
   renderReportToPng,
-  safeFilePart,
   saveReportAsPdf,
   sendReportToLark,
   triggerDownload,
   type LarkFormat,
 } from "@/lib/report-export";
+import { reportFileName } from "@/lib/report-filename";
 
 const SAMPLE_DAILY_ROWS = [
   calculateDailyRow({ name: "DIỆU LINH CSKH", revenue: 68_500_000, cogs: 31_200_000, shipping: 4_100_000, salary: 5_500_000, fixedCost: 2_100_000, ads: 7_800_000 }),
@@ -116,7 +116,7 @@ export default function ReportGenerator() {
     setExporting("image");
     try {
       const dataUrl = await renderReportToPng(reportRef.current);
-      triggerDownload(dataUrl, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.png`);
+      triggerDownload(dataUrl, reportFileName("performance", reportDate, "png"));
       setNotice({ type: "success", message: "Đã tải ảnh báo cáo PNG chất lượng cao." });
     } catch {
       setNotice({ type: "error", message: "Không thể tạo ảnh báo cáo. Vui lòng thử lại." });
@@ -128,7 +128,7 @@ export default function ReportGenerator() {
   async function exportPdf() {
     setExporting("pdf");
     try {
-      await saveReportAsPdf(reportRef.current, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.pdf`, { margin: 7 });
+      await saveReportAsPdf(reportRef.current, reportFileName("performance", reportDate, "pdf"), { margin: 7 });
       setNotice({ type: "success", message: "Đã tải báo cáo PDF A4 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });
@@ -141,7 +141,7 @@ export default function ReportGenerator() {
     // Same as exporting: swap the editable summary for static text so it appears in the image.
     setExporting(format === "pdf" ? "pdf" : "image");
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.png`, { format, pdf: { margin: 7 } });
+      await sendReportToLark(reportRef.current, reportFileName("performance", reportDate, "png"), { format, pdf: { margin: 7 } });
       setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });

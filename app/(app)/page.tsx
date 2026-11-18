@@ -21,12 +21,12 @@ import { SendToLarkButton } from "@/components/send-to-lark-button";
 import {
   larkSentMessage,
   renderReportToPng,
-  safeFilePart,
   saveReportAsPdf,
   sendReportToLark,
   triggerDownload,
   type LarkFormat,
 } from "@/lib/report-export";
+import { reportFileName } from "@/lib/report-filename";
 import { readWorkbookSheets } from "@/lib/workbook";
 
 export default function Home() {
@@ -108,7 +108,7 @@ export default function Home() {
     setNotice(null);
     try {
       const dataUrl = await renderReportToPng(reportRef.current);
-      triggerDownload(dataUrl, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.png`);
+      triggerDownload(dataUrl, reportFileName("daily", reportData.reportDate, "png"));
       setNotice({ type: "success", message: "Đã tạo ảnh PNG chất lượng cao." });
     } catch {
       setNotice({ type: "error", message: "Không thể tạo ảnh. Vui lòng thử lại trên trình duyệt Chrome hoặc Edge." });
@@ -121,7 +121,7 @@ export default function Home() {
     setExporting("pdf");
     setNotice(null);
     try {
-      await saveReportAsPdf(reportRef.current, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.pdf`);
+      await saveReportAsPdf(reportRef.current, reportFileName("daily", reportData.reportDate, "pdf"));
       setNotice({ type: "success", message: "Đã xuất báo cáo PDF khổ A4 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại sau." });
@@ -132,7 +132,7 @@ export default function Home() {
 
   async function sendToLark(format: LarkFormat) {
     try {
-      await sendReportToLark(reportRef.current, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.png`, { format });
+      await sendReportToLark(reportRef.current, reportFileName("daily", reportData.reportDate, "png"), { format });
       setNotice({ type: "success", message: larkSentMessage(format) });
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });

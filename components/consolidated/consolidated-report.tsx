@@ -35,6 +35,7 @@ import {
   type ReportKey,
   type SheetStatus,
 } from "@/lib/consolidated-report";
+import { reportFileName } from "@/lib/report-filename";
 import { PH_DEFAULT_EXCHANGE_RATE, processPhilippinesRows } from "@/lib/philippines-report";
 import { useDailyManual } from "@/lib/use-daily-manual";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
@@ -215,13 +216,21 @@ export function ConsolidatedReport() {
     URL.revokeObjectURL(url);
   }
 
-  // Evaluated inside event handlers only: Cache Components forbids reading the clock during render.
-  const filenameBase = () => `bao-cao-tong-hop-${tab}-${new Date().toISOString().slice(0, 10)}`;
+  // The date in the file name is the report's own date (range). Evaluated inside event handlers only: Cache Components
+  // forbids reading the clock during render, and a label with no date falls back to today.
+  const reportDateLabel = (): string | undefined => {
+    if (tab === "daily") return data?.daily?.reportDate;
+    if (tab === "performance") return data?.performance?.reportDate;
+    if (tab === "vn") return data?.vn?.summary.dateRangeLabel;
+    const days = phResult?.report?.days ?? [];
+    return days.length ? `${days[0].dateLabel} – ${days[days.length - 1].dateLabel}` : undefined;
+  };
+  const exportName = (extension: "png" | "pdf") => reportFileName(tab, reportDateLabel(), extension);
 
   async function exportImage() {
     setExporting("image");
     try {
-      triggerDownload(await renderReportToPng(reportRefs[tab].current), `${filenameBase()}.png`);
+      triggerDownload(await renderReportToPng(reportRefs[tab].current), exportName("png"));
       setNotice({ type: "success", message: `Đã tải ảnh báo cáo “${REPORT_LABELS[tab]}”.` });
     } catch (error) {
       console.error("export image failed", error);
@@ -235,7 +244,7 @@ export function ConsolidatedReport() {
     // The performance tab swaps its editable summary for static text while `exporting` is set.
     setExporting(format === "pdf" ? "pdf" : "image");
     try {
-      await sendReportToLark(reportRefs[tab].current, `${filenameBase()}.png`, { format, pdf: { format: PDF_FORMAT[tab] } });
+      await sendReportToLark(reportRefs[tab].current, exportName("png"), { format, pdf: { format: PDF_FORMAT[tab] } });
       setNotice({ type: "success", message: larkSentMessage(format, `“${REPORT_LABELS[tab]}”`) });
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Không thể gửi báo cáo tới Lark." });
@@ -247,7 +256,7 @@ export function ConsolidatedReport() {
   async function exportPdf() {
     setExporting("pdf");
     try {
-      await saveReportAsPdf(reportRefs[tab].current, `${filenameBase()}.pdf`, { format: PDF_FORMAT[tab] });
+      await saveReportAsPdf(reportRefs[tab].current, exportName("pdf"), { format: PDF_FORMAT[tab] });
       setNotice({ type: "success", message: `Đã tải PDF báo cáo “${REPORT_LABELS[tab]}”.` });
     } catch (error) {
       console.error("export pdf failed", error);
