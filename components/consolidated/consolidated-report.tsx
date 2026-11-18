@@ -8,6 +8,7 @@ import { Notice, type NoticeState } from "@/components/notice";
 import { PancakeSyncCard } from "@/components/pancake-sync-card";
 import type { PancakeSyncResult } from "@/lib/pancake/types";
 import { mergeablePhResults, mergeOpenOrders, mergePhRows, mergePreviousDay, mergeRefundTrend } from "@/lib/pancake/merge-ph";
+import { DailyManualEntry } from "@/components/daily/daily-manual-entry";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { PerformanceReportView } from "@/components/reports/performance-report-view";
 import { PhFinanceView } from "@/components/reports/ph-finance-view";
@@ -35,6 +36,7 @@ import {
   type SheetStatus,
 } from "@/lib/consolidated-report";
 import { PH_DEFAULT_EXCHANGE_RATE, processPhilippinesRows } from "@/lib/philippines-report";
+import { useDailyManual } from "@/lib/use-daily-manual";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { larkSentMessage, renderReportToPng, saveReportAsPdf, sendReportToLark, triggerDownload, type LarkFormat } from "@/lib/report-export";
 import { cn } from "@/lib/utils";
@@ -71,6 +73,9 @@ export function ConsolidatedReport() {
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
   // The user picked one Philippines shop instead of the merged report (which is the default once two or more are fetched).
   const [phSingle, setPhSingle] = useState(false);
+
+  // Typed bank transfer and cash-out ledger are laid over the daily report from the POS / Excel file.
+  const dailyManual = useDailyManual(data?.daily ?? null);
 
   // Philippines shops fetched for the same range are added together into one report.
   const phGroup = useMemo(() => mergeablePhResults(Object.values(shopResults)), [shopResults]);
@@ -339,11 +344,12 @@ export function ConsolidatedReport() {
           </div>
 
           <TabsContent value="daily" className="space-y-4">
-            {data.daily ? (
+            {data.daily && dailyManual.view ? (
               <>
-                <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(data.daily!, companyName)} />
+                <DailyManualEntry manual={dailyManual} reportDate={data.daily.reportDate} />
+                <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(dailyManual.view!, companyName)} />
                 <ReportViewport>
-                  <DailyReportView reportRef={dailyRef} data={data.daily} companyName={companyName} />
+                  <DailyReportView reportRef={dailyRef} data={dailyManual.view} companyName={companyName} />
                 </ReportViewport>
               </>
             ) : (

@@ -107,3 +107,25 @@ function rememberPayers(used: string[]) {
   }
   writeJson(PAYERS_KEY, merged.slice(0, MAX_PAYERS));
 }
+
+const BANK_PREFIX = "daily-bank:";
+
+/** The bank-transfer amount typed for a report date on this browser; undefined when nothing was typed. */
+export function loadBankDraft(reportDate: string): number | undefined {
+  const value = readJson<number>(BANK_PREFIX + reportDate.trim());
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** `undefined` forgets the typed amount, so the report falls back to the POS / file figure. */
+export function saveBankDraft(reportDate: string, amount: number | undefined) {
+  const key = BANK_PREFIX + reportDate.trim();
+  if (amount === undefined) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // see writeJson
+    }
+    return;
+  }
+  writeJson(key, amount);
+}

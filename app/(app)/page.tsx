@@ -6,7 +6,7 @@ import { AiAnalysisPanel } from "@/components/ai-analysis";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Notice, type NoticeState } from "@/components/notice";
 import { PancakeSyncCard } from "@/components/pancake-sync-card";
-import { ExpenseLedgerEditor } from "@/components/daily/expense-ledger-editor";
+import { DailyManualEntry } from "@/components/daily/daily-manual-entry";
 import { DailyReportView } from "@/components/reports/daily-report-view";
 import { ExportButtons, PageHeader, ReportViewport } from "@/components/report-ui";
 import { ConfigSection, ReportWorkspace } from "@/components/report-workspace";
@@ -14,8 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildDailyAnalysisData } from "@/lib/analysis-data";
-import { DAILY_SAMPLE_DATA, deriveDaily, parseDailyRows, type DailyReportData, type Expense } from "@/lib/daily-report";
-import { loadExpenseDraft, reportExpenses, saveExpenseDraft } from "@/lib/daily-expenses";
+import { DAILY_SAMPLE_DATA, deriveDaily, parseDailyRows, type DailyReportData } from "@/lib/daily-report";
+import { saveBankDraft, saveExpenseDraft } from "@/lib/daily-expenses";
+import { useDailyManual } from "@/lib/use-daily-manual";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import {
   larkSentMessage,
@@ -40,14 +41,10 @@ export default function Home() {
   const [isParsing, setIsParsing] = useState(false);
   const [exporting, setExporting] = useState<"image" | "pdf" | null>(null);
 
-  // The report shows the ledger without the blank rows being typed.
-  const viewData = { ...reportData, expenses: reportExpenses(reportData.expenses) };
+  // The typed bank transfer and cash-out ledger are laid over the POS / file figures (blank ledger rows dropped).
+  const manual = useDailyManual(reportData);
+  const viewData = manual.view ?? reportData;
   const { expenseGroups } = deriveDaily(viewData);
-
-  function updateExpenses(expenses: Expense[]) {
-    setReportData((current) => ({ ...current, expenses }));
-    saveExpenseDraft(reportData.reportDate, expenses);
-  }
 
   async function parseFile(file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase();
@@ -64,7 +61,10 @@ export default function Home() {
 
       const { data, rowCount, missingColumns } = parseDailyRows(firstSheet.rows);
       setReportData(data);
+      // A file carries its own ledger and bank transfer: they replace what was typed for that date.
       saveExpenseDraft(data.reportDate, data.expenses);
+      saveBankDraft(data.reportDate, undefined);
+      manual.reload(data.reportDate);
       setFileName(file.name);
       setNotice({
         type: "success",
@@ -159,8 +159,8 @@ export default function Home() {
             hint="Tự lấy doanh số, tiền chuyển khoản, COD phải thu và phí vận chuyển từ shop Việt Nam. Khoản chi NCC nhập ở bảng kê bên dưới."
             onSynced={({ daily }) => {
               if (!daily) return;
-              // POS has no cash-out ledger: keep what was typed for that date.
-              setReportData({ ...daily, expenses: loadExpenseDraft(daily.reportDate) ?? [] });
+              // POS has no cash-out ledger and no reliable bank transfer: what was typed for that date is kept.
+              setReportData({ ...daily, expenses: [] });
               setFileName("");
             }}
           />
@@ -194,7 +194,10 @@ export default function Home() {
                 id="report-date"
                 className="h-8 text-xs"
                 value={reportData.reportDate}
-                onChange={(event) => setReportData((current) => ({ ...current, reportDate: event.target.value }))}
+                onChange={(event) => {
+                  manual.moveTo(event.target.value);
+                  setReportData((current) => ({ ...current, reportDate: event.target.value }));
+                }}
                 placeholder="dd/mm/yyyy"
               />
             </div>
@@ -213,7 +216,7 @@ export default function Home() {
     >
       <Notice notice={notice} />
 
-      <ExpenseLedgerEditor expenses={reportData.expenses} reportDate={reportData.reportDate} onChange={updateExpenses} />
+      <DailyManualEntry manual={manual} reportDate={reportData.reportDate} />
 
       <AiAnalysisPanel reportType="daily" getData={() => buildDailyAnalysisData(viewData, companyName)} />
 

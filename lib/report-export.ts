@@ -62,9 +62,47 @@ function inlineSvgPaint(root: HTMLElement) {
   return () => restore.forEach((undo) => undo());
 }
 
-/** Renders a report element to a high-resolution PNG data URL. */
+const EXPORT_WIDTH_ATTR = "data-export-width";
+
+/**
+ * Runs `task` with the report laid out at its minimum width (the `min-w-[…]` it was designed for) instead of whatever the
+ * screen gives it. Every report stretches to fill its container, so without this the picture / PDF of the same report is
+ * 860 px wide on a laptop and 1900 px wide on a big monitor, and its charts and table columns come out differently. The
+ * width is put back afterwards. A report whose content is wider than its minimum (e.g. `w-max`) keeps its own width.
+ */
+async function atExportWidth<T>(element: HTMLElement, task: () => Promise<T>): Promise<T> {
+  if (element.hasAttribute(EXPORT_WIDTH_ATTR)) return task();
+  const minWidth = parseFloat(getComputedStyle(element).minWidth);
+  if (!(minWidth > 0)) return task();
+
+  const { width, maxWidth } = element.style;
+  const setWidth = async (pixels: number) => {
+    element.style.width = `${pixels}px`;
+    element.style.maxWidth = "none";
+    await waitForPaint();
+    // charts measure their box with a ResizeObserver and redraw: give them a moment
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await waitForPaint();
+  };
+  element.setAttribute(EXPORT_WIDTH_ATTR, "");
+  try {
+    await setWidth(minWidth);
+    if (element.scrollWidth > minWidth + 1) await setWidth(element.scrollWidth);
+    return await task();
+  } finally {
+    element.style.width = width;
+    element.style.maxWidth = maxWidth;
+    element.removeAttribute(EXPORT_WIDTH_ATTR);
+  }
+}
+
+/** Renders a report element to a high-resolution PNG data URL, at the report's fixed export width. */
 export async function renderReportToPng(element: HTMLElement | null, pixelRatio = 2) {
   if (!element) throw new Error("Không tìm thấy vùng báo cáo.");
+  return atExportWidth(element, () => capturePng(element, pixelRatio));
+}
+
+async function capturePng(element: HTMLElement, pixelRatio: number) {
   // charts may still be waiting to scroll into view or mid-animation: put them in their final state before the picture
   settleChartAnimations();
   await waitForPaint();
@@ -127,6 +165,11 @@ export type PdfOptions = { format?: "a4" | "a3"; margin?: number };
 /** Renders a report element into a multi-page landscape PDF document, breaking pages between blocks. */
 async function buildReportPdf(element: HTMLElement | null, { format = "a4", margin = 8 }: PdfOptions = {}, pixelRatio = 2) {
   if (!element) throw new Error("Không tìm thấy vùng báo cáo.");
+  const report = element;
+  return atExportWidth(report, () => buildPdfAtFixedWidth(report, { format, margin }, pixelRatio));
+}
+
+async function buildPdfAtFixedWidth(element: HTMLElement, { format = "a4", margin = 8 }: PdfOptions, pixelRatio: number) {
   settleChartAnimations();
   await waitForPaint();
   const blocks = collectBlocks(element);
