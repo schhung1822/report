@@ -122,7 +122,7 @@ export default function Home() {
     setNotice(null);
     try {
       await saveReportAsPdf(reportRef.current, `bao-cao-tai-chinh-${safeFilePart(reportData.reportDate)}.pdf`);
-      setNotice({ type: "success", message: "Đã xuất báo cáo PDF khổ A4 ngang." });
+      setNotice({ type: "success", message: "Đã xuất báo cáo PDF khổ A4 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại sau." });
     } finally {

@@ -129,7 +129,7 @@ export default function ReportGenerator() {
     setExporting("pdf");
     try {
       await saveReportAsPdf(reportRef.current, `bao-cao-hieu-suat-${safeFilePart(reportDate)}.pdf`, { margin: 7 });
-      setNotice({ type: "success", message: "Đã tải báo cáo PDF A4 ngang." });
+      setNotice({ type: "success", message: "Đã tải báo cáo PDF A4 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });
     } finally {

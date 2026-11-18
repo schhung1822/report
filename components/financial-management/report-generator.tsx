@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { SendToLarkButton } from "@/components/send-to-lark-button";
 import { Textarea } from "@/components/ui/textarea";
 import { settleChartAnimations } from "@/hooks/use-chart-motion";
-import { larkSentMessage, sendReportToLark, type LarkFormat } from "@/lib/report-export";
+import { larkSentMessage, saveReportAsPdf, sendReportToLark, type LarkFormat } from "@/lib/report-export";
 import {
   CumulativeVarianceTable,
   DailyBreakdownTable,
@@ -286,40 +286,8 @@ export default function FinancialManagementReportGenerator() {
   async function exportPdf() {
     setExporting("pdf");
     try {
-      const dataUrl = await renderReport();
-      const [{ jsPDF }, image] = await Promise.all([
-        import("jspdf"),
-        new Promise<HTMLImageElement>((resolve, reject) => {
-          const output = new Image();
-          output.onload = () => resolve(output);
-          output.onerror = reject;
-          output.src = dataUrl;
-        }),
-      ]);
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
-      const margin = 8;
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const printableWidth = pageWidth - margin * 2;
-      const printableHeight = pageHeight - margin * 2;
-      const renderedHeight = (image.height * printableWidth) / image.width;
-      const pages = Math.max(1, Math.ceil(renderedHeight / printableHeight));
-
-      for (let page = 0; page < pages; page += 1) {
-        if (page > 0) pdf.addPage("a3", "landscape");
-        pdf.addImage(
-          dataUrl,
-          "PNG",
-          margin,
-          margin - page * printableHeight,
-          printableWidth,
-          renderedHeight,
-          undefined,
-          "FAST",
-        );
-      }
-      pdf.save(`bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.pdf`);
-      setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 ngang." });
+      await saveReportAsPdf(reportRef.current, `bao-cao-quan-tri-${safeFilePart(report.summary.dateRangeLabel)}.pdf`, { format: "a3" });
+      setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 dọc." });
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." });
     } finally {

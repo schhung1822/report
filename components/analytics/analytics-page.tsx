@@ -46,7 +46,7 @@ export function AnalyticsPage() {
     setNotice(null)
     try {
       await saveReportAsPdf(reportRef.current, `${baseName}.pdf`, { format: "a3" })
-      setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 ngang." })
+      setNotice({ type: "success", message: "Đã tải báo cáo PDF A3 dọc." })
     } catch {
       setNotice({ type: "error", message: "Không thể xuất PDF. Vui lòng thử lại." })
     } finally {

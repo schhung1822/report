@@ -68,11 +68,11 @@ const EXPORT_WIDTH_ATTR = "data-export-width";
  * Runs `task` with the report laid out at its minimum width (the `min-w-[…]` it was designed for) instead of whatever the
  * screen gives it. Every report stretches to fill its container, so without this the picture / PDF of the same report is
  * 860 px wide on a laptop and 1900 px wide on a big monitor, and its charts and table columns come out differently. The
- * width is put back afterwards. A report whose content is wider than its minimum (e.g. `w-max`) keeps its own width.
+ * width is put back afterwards (`atLeast` raises that minimum). A report whose content is wider than its minimum (e.g. `w-max`) keeps its own width.
  */
-async function atExportWidth<T>(element: HTMLElement, task: () => Promise<T>): Promise<T> {
+async function atExportWidth<T>(element: HTMLElement, task: () => Promise<T>, atLeast = 0): Promise<T> {
   if (element.hasAttribute(EXPORT_WIDTH_ATTR)) return task();
-  const minWidth = parseFloat(getComputedStyle(element).minWidth);
+  const minWidth = Math.max(parseFloat(getComputedStyle(element).minWidth) || 0, atLeast);
   if (!(minWidth > 0)) return task();
 
   const { width, maxWidth } = element.style;
@@ -162,11 +162,14 @@ export function planPageCuts(totalHeight: number, pageHeight: number, blocks: Bl
 
 export type PdfOptions = { format?: "a4" | "a3"; margin?: number };
 
-/** Renders a report element into a multi-page landscape PDF document, breaking pages between blocks. */
+/** A PDF is laid out at least this wide (px) and printed on portrait pages, so it reads the same wherever it is made. */
+export const PDF_MIN_WIDTH = 1320;
+
+/** Renders a report element into a multi-page portrait PDF document, breaking pages between blocks. */
 async function buildReportPdf(element: HTMLElement | null, { format = "a4", margin = 8 }: PdfOptions = {}, pixelRatio = 2) {
   if (!element) throw new Error("Không tìm thấy vùng báo cáo.");
   const report = element;
-  return atExportWidth(report, () => buildPdfAtFixedWidth(report, { format, margin }, pixelRatio));
+  return atExportWidth(report, () => buildPdfAtFixedWidth(report, { format, margin }, pixelRatio), PDF_MIN_WIDTH);
 }
 
 async function buildPdfAtFixedWidth(element: HTMLElement, { format = "a4", margin = 8 }: PdfOptions, pixelRatio: number) {
@@ -185,7 +188,7 @@ async function buildPdfAtFixedWidth(element: HTMLElement, { format = "a4", margi
       output.src = dataUrl;
     }),
   ]);
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format });
   const printableWidth = pdf.internal.pageSize.getWidth() - margin * 2;
   const printableHeight = pdf.internal.pageSize.getHeight() - margin * 2;
   // one page holds this many pixels of the report
@@ -205,13 +208,13 @@ async function buildPdfAtFixedWidth(element: HTMLElement, { format = "a4", margi
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, slice.width, slice.height);
     context.drawImage(image, 0, top, image.width, height, 0, 0, image.width, height);
-    if (page > 0) pdf.addPage(format, "landscape");
+    if (page > 0) pdf.addPage(format, "portrait");
     pdf.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, printableWidth, (height * printableWidth) / image.width, undefined, "FAST");
   }
   return pdf;
 }
 
-/** Renders a report element and saves it as a multi-page landscape PDF, breaking pages between blocks. */
+/** Renders a report element and saves it as a multi-page portrait PDF, breaking pages between blocks. */
 export async function saveReportAsPdf(element: HTMLElement | null, filename: string, options: PdfOptions = {}) {
   (await buildReportPdf(element, options)).save(filename);
 }
