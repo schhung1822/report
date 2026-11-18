@@ -64,11 +64,30 @@ function inlineSvgPaint(root: HTMLElement) {
 
 const EXPORT_WIDTH_ATTR = "data-export-width";
 
+/** Upper bound of the fit below, so a box that keeps growing with its container cannot widen the report forever. */
+const EXPORT_MAX_WIDTH = 2600;
+
+/**
+ * How many pixels the report lacks to show everything side by side. A wide table scrolls inside its own box
+ * (`overflow-x-auto`) instead of widening the report, so a picture taken at the minimum width would cut its last columns off.
+ */
+function horizontalShortfall(element: HTMLElement) {
+  let shortfall = element.scrollWidth - element.clientWidth;
+  element.querySelectorAll<HTMLElement>("*").forEach((node) => {
+    const hidden = node.scrollWidth - node.clientWidth;
+    if (hidden <= 1) return;
+    const { overflowX } = getComputedStyle(node);
+    if (overflowX === "auto" || overflowX === "scroll") shortfall = Math.max(shortfall, hidden);
+  });
+  return shortfall;
+}
+
 /**
  * Runs `task` with the report laid out at its minimum width (the `min-w-[…]` it was designed for) instead of whatever the
  * screen gives it. Every report stretches to fill its container, so without this the picture / PDF of the same report is
  * 860 px wide on a laptop and 1900 px wide on a big monitor, and its charts and table columns come out differently. The
- * width is put back afterwards (`atLeast` raises that minimum). A report whose content is wider than its minimum (e.g. `w-max`) keeps its own width.
+ * width is put back afterwards (`atLeast` raises that minimum). When a table needs more room than that minimum (a month of
+ * days, many cost columns), the report is widened just enough for every column to show: nothing is cut off on the right.
  */
 async function atExportWidth<T>(element: HTMLElement, task: () => Promise<T>, atLeast = 0): Promise<T> {
   if (element.hasAttribute(EXPORT_WIDTH_ATTR)) return task();
@@ -86,8 +105,15 @@ async function atExportWidth<T>(element: HTMLElement, task: () => Promise<T>, at
   };
   element.setAttribute(EXPORT_WIDTH_ATTR, "");
   try {
-    await setWidth(minWidth);
-    if (element.scrollWidth > minWidth + 1) await setWidth(element.scrollWidth);
+    let exportWidth = minWidth;
+    await setWidth(exportWidth);
+    // Columns can re-flow once the report is wider, so measure again after each step (it settles in one or two).
+    for (let pass = 0; pass < 4 && exportWidth < EXPORT_MAX_WIDTH; pass += 1) {
+      const shortfall = horizontalShortfall(element);
+      if (shortfall <= 1) break;
+      exportWidth = Math.min(EXPORT_MAX_WIDTH, Math.ceil(exportWidth + shortfall));
+      await setWidth(exportWidth);
+    }
     return await task();
   } finally {
     element.style.width = width;
@@ -179,15 +205,7 @@ async function buildPdfAtFixedWidth(element: HTMLElement, { format = "a4", margi
   const reportWidth = element.scrollWidth;
   const reportHeight = element.scrollHeight;
   const dataUrl = await renderReportToPng(element, pixelRatio);
-  const [{ jsPDF }, image] = await Promise.all([
-    import("jspdf"),
-    new Promise<HTMLImageElement>((resolve, reject) => {
-      const output = new Image();
-      output.onload = () => resolve(output);
-      output.onerror = reject;
-      output.src = dataUrl;
-    }),
-  ]);
+  const [{ jsPDF }, image] = await Promise.all([import("jspdf"), loadImage(dataUrl)]);
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format });
   const printableWidth = pdf.internal.pageSize.getWidth() - margin * 2;
   const printableHeight = pdf.internal.pageSize.getHeight() - margin * 2;
@@ -231,14 +249,62 @@ export async function renderReportToPdfBlob(element: HTMLElement | null, options
   throw new Error("Không thể tạo file PDF đủ nhỏ để gửi.");
 }
 
-/** Renders a report element to a PNG Blob, lowering resolution if needed to stay under maxBytes. */
-export async function renderReportToBlob(element: HTMLElement | null, maxBytes = 9.5 * 1024 * 1024) {
-  for (const pixelRatio of [2, 1.5, 1]) {
-    const dataUrl = await renderReportToPng(element, pixelRatio);
-    const blob = await (await fetch(dataUrl)).blob();
-    if (blob.size <= maxBytes || pixelRatio === 1) return blob;
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const output = new Image();
+    output.onload = () => resolve(output);
+    output.onerror = reject;
+    output.src = src;
+  });
+}
+
+// Lark refuses an image message over 10 MB, or longer than 12000 px on a side (im/v1/images, error 234039).
+const LARK_IMAGE_MAX_BYTES = 9.5 * 1024 * 1024;
+const LARK_IMAGE_MAX_SIDE = 12_000;
+
+/** The sharpest pixel ratio (2 at most) whose picture of the report stays within Lark's 12000 px a side. */
+function larkPixelRatio(element: HTMLElement) {
+  const longest = Math.max(element.scrollWidth, element.scrollHeight, 1);
+  return Math.min(2, Math.floor((LARK_IMAGE_MAX_SIDE / longest) * 100) / 100);
+}
+
+/**
+ * Renders a report element to an image Blob Lark accepts: a PNG at the sharpest resolution within 12000 px a side. Only when
+ * that PNG is over maxBytes is it turned into a JPEG (then a smaller one). The report is drawn once, whatever the outcome.
+ */
+export async function renderReportToBlob(element: HTMLElement | null, maxBytes = LARK_IMAGE_MAX_BYTES) {
+  if (!element) throw new Error("Không tìm thấy vùng báo cáo.");
+  const report = element;
+  const dataUrl = await atExportWidth(report, () => capturePng(report, larkPixelRatio(report)));
+  const png = await (await fetch(dataUrl)).blob();
+  if (png.size <= maxBytes) return png;
+
+  const image = await loadImage(dataUrl);
+  for (const [scale, quality] of [[1, 0.9], [1, 0.8], [0.75, 0.8], [0.5, 0.8]]) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) break;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (jpeg && jpeg.size <= maxBytes) return jpeg;
   }
-  throw new Error("Không thể tạo ảnh đủ nhỏ để gửi.");
+  throw new Error("Ảnh báo cáo quá lớn để gửi qua Lark. Hãy gửi dạng file PDF.");
+}
+
+const withExtension = (filename: string, extension: string) => `${filename.replace(/\.[^./\\]+$/, "")}.${extension}`;
+
+/** Why an upload to our own Lark route failed, when the answer is not one of the route's JSON errors. */
+function uploadFailure(status: number, bytes: number, format: LarkFormat) {
+  const what = `${LARK_FORMAT_LABEL[format]} ${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  // The routes answer every error in JSON, so a bare 413 comes from the proxy in front of the app (nginx takes 1 MB by default).
+  if (status === 413) {
+    return `Máy chủ chặn ${what} vì vượt giới hạn tải lên. Trên VPS cần đặt “client_max_body_size 40m;” trong cấu hình nginx (xem DEPLOY-VPS.md) rồi reload nginx.`;
+  }
+  return `Không thể gửi ${what} tới Lark (máy chủ trả về lỗi ${status}).`;
 }
 
 /** What the "Gửi Lark" button can send: the report as a PNG picture or as a PDF file. */
@@ -251,7 +317,8 @@ export const larkSentMessage = (format: LarkFormat, report = "báo cáo") => `Đ
 
 /**
  * Sends a report to the configured Lark group via our API routes, as a PNG image (default) or a PDF file.
- * `filename` is the PNG name; for a PDF its extension is swapped. Throws Error with a user-facing message.
+ * `filename` is the PNG name; for a PDF (or an image that had to become a JPEG) its extension is swapped.
+ * Throws Error with a user-facing message.
  */
 export async function sendReportToLark(
   element: HTMLElement | null,
@@ -260,16 +327,18 @@ export async function sendReportToLark(
 ) {
   const form = new FormData();
   let route: string;
+  let blob: Blob;
   if (format === "pdf") {
-    const blob = await renderReportToPdfBlob(element, pdf);
-    form.append("file", new File([blob], filename.replace(/\.[^./\\]+$/, "") + ".pdf", { type: "application/pdf" }));
+    blob = await renderReportToPdfBlob(element, pdf);
+    form.append("file", new File([blob], withExtension(filename, "pdf"), { type: "application/pdf" }));
     route = "/api/lark/send-file";
   } else {
-    const blob = await renderReportToBlob(element);
-    form.append("image", new File([blob], filename, { type: "image/png" }));
+    blob = await renderReportToBlob(element);
+    const jpeg = blob.type === "image/jpeg";
+    form.append("image", new File([blob], jpeg ? withExtension(filename, "jpg") : filename, { type: jpeg ? "image/jpeg" : "image/png" }));
     route = "/api/lark/send-image";
   }
   const response = await fetch(route, { method: "POST", body: form });
   const json = (await response.json().catch(() => null)) as { error?: string } | null;
-  if (!response.ok) throw new Error(json?.error ?? `Không thể gửi ${LARK_FORMAT_LABEL[format]} tới Lark.`);
+  if (!response.ok) throw new Error(json?.error ?? uploadFailure(response.status, blob.size, format));
 }
