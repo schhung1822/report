@@ -295,11 +295,11 @@ export function PhFinanceView({
           <ReportSection
             index="05"
             title="Kết quả kinh doanh theo ngày"
-            description="Giá vốn + Ads + Vận chuyển + Lương + Dịch vụ mua ngoài + Khác + Thuế/phí; kèm lợi nhuận lũy kế"
+            description="Đơn vị ₫, peso (₱) trong ngoặc · Giá vốn + Ads + Vận chuyển + Lương + Dịch vụ mua ngoài + Khác + Thuế/phí; kèm lợi nhuận lũy kế"
           >
             <TableFrame>
-              <Table className="text-xs">
-                <TableHeader className={tableHeaderClass}>
+              <Table className="text-[11px]">
+                <TableHeader className={dayHeaderClass}>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Ngày</TableHead>
                     <TableHead className="text-right">Doanh thu</TableHead>
@@ -307,19 +307,28 @@ export function PhFinanceView({
                     <TableHead className="text-right">Ads</TableHead>
                     <TableHead className="text-right">Vận chuyển</TableHead>
                     <TableHead className="text-right">Lương</TableHead>
-                    <TableHead className="text-right">Dịch vụ, khác, thuế</TableHead>
+                    <TableHead className="text-right">
+                      Dịch vụ,
+                      <br />
+                      khác, thuế
+                    </TableHead>
                     <TableHead className="text-right">Tổng chi phí</TableHead>
                     <TableHead className="text-right">Lợi nhuận</TableHead>
                     <TableHead className="text-right">Biên LN</TableHead>
                     <TableHead className="text-right">LN lũy kế</TableHead>
                     <TableHead className="text-right">Ads / DT</TableHead>
-                    <TableHead className="text-right">{cumulativeView ? "Tỷ lệ hoàn (lũy kế tháng)" : refundTrend ? "Tỷ lệ hoàn (lũy kế 7 ngày)" : "Tỷ lệ hoàn"}</TableHead>
+                    <TableHead className="text-right">
+                      Tỷ lệ hoàn
+                      {cumulativeView || refundTrend ? (
+                        <span className="block text-[10px] font-normal">{cumulativeView ? "lũy kế tháng" : "lũy kế 7 ngày"}</span>
+                      ) : null}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {days.map((day) => (
                     <TableRow key={`${day.date}-${day.sourceIndex}`} className="break-inside-avoid">
-                      <TableCell className={cn(cellClass, "font-medium")}>{day.dateLabel}</TableCell>
+                      <TableCell className={cn(dayCellClass, "font-medium tabular-nums")}>{day.dateLabel.slice(0, 5)}</TableCell>
                       <DualCell value={day.pnl.revenue} />
                       <DualCell value={day.pnl.cogs} />
                       <DualCell value={day.pnl.ads} />
@@ -328,18 +337,18 @@ export function PhFinanceView({
                       <DualCell value={addDualCurrency(day.pnl.outsourcedServices, day.pnl.otherCost, day.pnl.taxFee)} />
                       <DualCell value={addDualCurrency(day.pnl.totalSalesCost, day.pnl.taxFee)} />
                       <DualCell value={day.pnl.netProfit} colored strong />
-                      <TableCell className={cn(cellClass, "text-right tabular-nums text-muted-foreground")}>
+                      <TableCell className={cn(dayCellClass, "text-right tabular-nums text-muted-foreground")}>
                         {formatPercent(shareOf(day.pnl.netProfit.peso, day.pnl.revenue.peso))}
                       </TableCell>
                       <DualCell value={day.cumulative.actual.profit} colored />
-                      <TableCell className={cn(cellClass, "text-right tabular-nums")}>{formatPercent(day.pnl.adsRevenueRatio)}</TableCell>
-                      <TableCell className={cn(cellClass, "text-right tabular-nums text-muted-foreground")}>{formatPercent(monthRateOf(day))}</TableCell>
+                      <TableCell className={cn(dayCellClass, "text-right tabular-nums")}>{formatPercent(day.pnl.adsRevenueRatio)}</TableCell>
+                      <TableCell className={cn(dayCellClass, "text-right tabular-nums text-muted-foreground")}>{formatPercent(monthRateOf(day))}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
                 <TableFooter>
                   <TableRow className="hover:bg-transparent">
-                    <TableCell className={cn(cellClass, "font-semibold")}>Tổng</TableCell>
+                    <TableCell className={cn(dayCellClass, "font-semibold")}>Tổng</TableCell>
                     <DualCell value={revenue} strong />
                     <DualCell value={cogs} strong />
                     <DualCell value={ads} strong />
@@ -348,10 +357,10 @@ export function PhFinanceView({
                     <DualCell value={addDualCurrency(outsourced, other, taxFee)} strong />
                     <DualCell value={addDualCurrency(summary.totalSalesCost, taxFee)} strong />
                     <DualCell value={profit} colored strong />
-                    <TableCell className={cn(cellClass, "text-right font-semibold tabular-nums")}>{formatPercent(margin)}</TableCell>
+                    <TableCell className={cn(dayCellClass, "text-right font-semibold tabular-nums")}>{formatPercent(margin)}</TableCell>
                     <DualCell value={profit} colored strong />
-                    <TableCell className={cn(cellClass, "text-right font-semibold tabular-nums")}>{formatPercent(summary.adsRevenueRatio)}</TableCell>
-                    <TableCell className={cn(cellClass, "text-right font-semibold tabular-nums")}>{formatPercent(periodRefundRate)}</TableCell>
+                    <TableCell className={cn(dayCellClass, "text-right font-semibold tabular-nums")}>{formatPercent(summary.adsRevenueRatio)}</TableCell>
+                    <TableCell className={cn(dayCellClass, "text-right font-semibold tabular-nums")}>{formatPercent(periodRefundRate)}</TableCell>
                   </TableRow>
                 </TableFooter>
               </Table>
@@ -866,7 +875,17 @@ function CumulativeRefundAssessment({ cumulative, to }: { cumulative: RefundCumu
   );
 }
 
-/** One table cell showing a VND amount with its peso value in brackets underneath. */
+// The daily table (section 05) has 13 columns and must fit the report at its export width (min-w 1120 px, 1040 px inside the
+// padding) with no horizontal scrollbar: a picture or PDF cannot be scrolled, so anything past the edge is lost. Hence the tight
+// padding, the 11 px figures, the two-line headers, the dd/mm dates (the year is in the report's header) and the VND amounts
+// without "₫" (the section's description names the unit). Measured at 1120 px: about 45 px to spare for a 30-day month with a
+// revenue of 3 billion ₫; a column only grows again past 10 billion ₫. Check the width again before adding a column.
+const dayHeaderClass =
+  "bg-muted/50 [&_th]:h-auto [&_th]:px-[5px] [&_th]:py-2 [&_th]:align-bottom [&_th]:text-[11px] [&_th]:leading-tight [&_th]:font-medium [&_th]:text-muted-foreground [&_th:first-child]:pl-3 [&_th:last-child]:pr-3";
+const dayCellClass = "px-[5px] py-2.5 first:pl-3 last:pr-3";
+const vndNumberFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 });
+
+/** One cell of the daily table: a VND amount (no currency sign) with its peso value in brackets underneath. */
 function DualCell({
   value,
   colored = false,
@@ -879,11 +898,11 @@ function DualCell({
   strong?: boolean;
 }) {
   return (
-    <TableCell className={cn(cellClass, "text-right tabular-nums")}>
+    <TableCell className={cn(dayCellClass, "text-right tabular-nums")}>
       <span className={cn("block", strong && "font-semibold", colored && signedTextClass(value.peso))}>
-        {signedValue ? signed(formatVnd, value.vnd) : formatVnd(value.vnd)}
+        {signedValue ? signed(vndNumberFormatter.format, value.vnd) : vndNumberFormatter.format(value.vnd)}
       </span>
-      <span className="block text-[11px] text-muted-foreground">{pesoNote(value, signedValue)}</span>
+      <span className="block text-[10px] text-muted-foreground">{pesoNote(value, signedValue)}</span>
     </TableCell>
   );
 }
